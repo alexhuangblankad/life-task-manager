@@ -145,6 +145,21 @@ void main() {
       final out = updateSubtask(sampleLf, st.copyWith(title: '写完开题报告（改）', due: DateTime(2026, 11, 1)));
       expect(out.contains('- [ ] 写完开题报告（改） 📅 2026-11-01 ⏫ ^s-a1b2c3'), isTrue);
     });
+
+    test('手写在 Obsidian 里的任务行（没有 ^id）：ID 稳定、勾得动、并自愈加上 ID', () {
+      const raw = '---\nid: t-1\ntitle: 手写测试\n---\n\n# 手写测试\n\n## 子任务\n- [ ] 手写的一件事\n';
+      final a = parseTaskFile(raw).task.subtasks.single;
+      final b = parseTaskFile(raw).task.subtasks.single;
+      expect(a.id, b.id, reason: '同一文件解析两次 ID 必须一致，否则这个勾永远点不动');
+
+      final out = setSubtaskDone(raw, a.id, true, now: DateTime(2026, 9, 29));
+      expect(out.contains('- [x] 手写的一件事 ✅ 2026-09-29 ^h-'), isTrue, reason: '改完要顺手把 ^id 写进文件');
+      // 再解析一次，ID 应该变成显式写在文件里的那个，且保持不变
+      final c = parseTaskFile(out).task.subtasks.single;
+      expect(c.done, isTrue);
+      expect(c.id.startsWith('h-'), isTrue);
+      expect(c.id, a.id, reason: '自愈之后 ID 不能变');
+    });
   });
 
   group('渲染', () {

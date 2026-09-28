@@ -24,6 +24,10 @@
 /// 修改只做「行级手术」——只替换命中的那一行，用户手写的其它内容一个字节都不动。
 library;
 
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 import '../core/front_matter.dart';
 import '../core/ids.dart';
 
@@ -201,6 +205,15 @@ TaskFile parseTaskFile(String raw, {String filePath = ''}) {
 }
 
 /// 解析一行小任务；不是任务行就返回 null。
+///
+/// 用户手写的任务行往往没有 `^id`。这时**不能用随机 ID**：每次解析都会变，
+/// 写回文件时按 ID 找不到那一行，表现为「这个勾怎么点都不动」。
+/// 用内容哈希生成稳定 ID；第一次被改写时会把 `^id` 正式写进文件（自愈）。
+String derivedSubtaskId(String line) {
+  final digest = sha1.convert(utf8.encode(line.trim())).toString();
+  return 'h-${digest.substring(0, 8)}';
+}
+
 SubTask? parseSubtaskLine(String line) {
   final m = _checkboxLine.firstMatch(line);
   if (m == null) return null;
@@ -249,7 +262,7 @@ SubTask? parseSubtaskLine(String line) {
   if (title.isEmpty) return null;
 
   return SubTask(
-    id: id ?? newSubtaskId(),
+    id: id ?? derivedSubtaskId(line),
     title: title,
     done: m.group(2)!.toLowerCase() == 'x',
     due: due,

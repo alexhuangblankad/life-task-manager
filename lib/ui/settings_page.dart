@@ -329,12 +329,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.asset('assets/donate_qr.png', width: 220),
+                      child: Image.asset('assets/donate_qr.png', width: 300),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '扫码支持 5 元',
+                      '微信扫码支持 5 元',
                       style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '定额 5 元，纯属自愿 —— 收不收都不影响任何功能，软件该有的全都有',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                     ),
                   ],
                 ),

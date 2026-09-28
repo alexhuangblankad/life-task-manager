@@ -19,20 +19,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _index = 0;
-  late final List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    final s = widget.state;
-    _pages = [
-      CountdownPage(state: s),
-      CalendarPage(state: s),
-      TasksPage(state: s),
-      NotesPage(state: s),
-      SettingsPage(state: s),
-    ];
-  }
 
   static const _destinations = [
     NavigationRailDestination(icon: Icon(Icons.hourglass_bottom_outlined), selectedIcon: Icon(Icons.hourglass_bottom), label: Text('倒计时')),
@@ -45,7 +31,11 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final s = widget.state;
-    // 必须监听状态：否则设置改完了界面不会重建（倒计时"设置后不生效"就是这里少了监听）
+    // 必须监听状态，而且**每次都要新建页面实例**：
+    // 如果把页面实例缓存在 initState 里，重建时传回去的是同一个 widget 对象，
+    // Flutter 认为"widget 没变"就跳过子树的 rebuild —— 于是数据变了界面纹丝不动
+    // （勾选后勾不显示、设置改完界面不变，都是这个原因）。
+    // State 会按 widget 类型+位置复用，所以日历选中的日期、输入框里的字都不会丢。
     return ListenableBuilder(
       listenable: s,
       builder: (context, _) => Scaffold(
@@ -78,7 +68,18 @@ class _HomePageState extends State<HomePage> {
               destinations: _destinations,
             ),
             const VerticalDivider(width: 1),
-            Expanded(child: IndexedStack(index: _index, children: _pages)),
+            Expanded(
+              child: IndexedStack(
+                index: _index,
+                children: [
+                  CountdownPage(state: s),
+                  CalendarPage(state: s),
+                  TasksPage(state: s),
+                  NotesPage(state: s),
+                  SettingsPage(state: s),
+                ],
+              ),
+            ),
           ],
         ),
       ),

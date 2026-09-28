@@ -176,6 +176,9 @@ void main() {
     expect(find.text('支持作者'), findsOneWidget);
     expect(find.textContaining('5 元'), findsWidgets);
     expect(find.byType(Image), findsWidgets, reason: '收款码图片要显示出来');
+    // 要挂的是真图那个资源，别挂错文件（图片本身能不能解码由 test/asset_test.dart 管）
+    final img = tester.widget<Image>(find.byType(Image).first);
+    expect((img.image as AssetImage).assetName, 'assets/donate_qr.png');
   });
 
   testWidgets('杂记页：两种杂记都在，能按月过滤', (tester) async {
@@ -193,6 +196,71 @@ void main() {
     expect(find.textContaining('WebDAV'), findsWidgets);
     expect(find.textContaining('关于'), findsOneWidget);
     expect(find.text(vaultPath), findsOneWidget, reason: 'vault 路径要显示出来');
+  });
+
+  testWidgets('待办页：勾选后弹杂记窗，关掉之后勾必须还在', (tester) async {
+    await pumpApp(tester);
+    await goTab(tester, '待办');
+    final tasksPage = find.byType(TasksPage);
+    await tester.tap(find.descendant(of: tasksPage, matching: find.text('草坪机器人毕设')).first);
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+
+    final target = '看两篇路径规划论文';
+    final done = await tester.runAsync(() async {
+      await tester.tap(find.descendant(of: tasksPage, matching: find.text(target)));
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      final tasks = await VaultRepository(vaultPath).loadTasks();
+      return tasks.single.task.subtasks.firstWhere((s) => s.title == target).done;
+    });
+    expect(done, isTrue, reason: '点击应该写进 md 文件');
+
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+    expect(find.text('跳过'), findsOneWidget, reason: '应该弹出写任务杂记的对话框');
+    await tester.tap(find.text('跳过'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+
+    // 关键：关掉弹窗之后，界面上这个复选框必须是勾上的（不能自己弹回去）
+    final tile = tester.widget<CheckboxListTile>(find.ancestor(
+      of: find.descendant(of: tasksPage, matching: find.text(target)),
+      matching: find.byType(CheckboxListTile),
+    ));
+    expect(tile.value, isTrue, reason: '关掉弹窗后勾不能消失');
+  });
+
+  testWidgets('日历页：到期/计划任务的勾也能点、能写盘', (tester) async {
+    await pumpApp(tester, height: 1400);
+    await goTab(tester, '日历');
+
+    final target = '看两篇路径规划论文'; // 计划日期=今天
+    expect(find.text(target), findsWidgets, reason: '今天计划做的事要显示在日历里');
+
+    final done = await tester.runAsync(() async {
+      final tileFinder = find.ancestor(
+        of: find.text(target),
+        matching: find.byType(CheckboxListTile),
+      );
+      expect(tileFinder, findsWidgets);
+      await tester.tap(tileFinder.first);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      final tasks = await VaultRepository(vaultPath).loadTasks();
+      return tasks.single.task.subtasks.firstWhere((s) => s.title == target).done;
+    });
+    expect(done, isTrue, reason: '日历里的勾也要能写进 md 文件');
+
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+    final tile = tester.widget<CheckboxListTile>(find.ancestor(
+      of: find.text(target),
+      matching: find.byType(CheckboxListTile),
+    ).first);
+    expect(tile.value, isTrue, reason: '日历里勾上之后要显示为已勾选');
   });
 
   testWidgets('人生期限：设置后倒计时开始跳数字', (tester) async {
