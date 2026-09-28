@@ -1,4 +1,0 @@
-USER_CODE=1904-7F83
-DEVICE_CODE=6f2a9301188de0b2ba77b6b9184c78a85cbaf557
-VERIFY=https://github.com/login/device
-INTERVAL=10
