@@ -156,7 +156,7 @@ void main() {
   });
 
   testWidgets('外观：能切到暗色，并且跟着状态走', (tester) async {
-    await pumpApp(tester, height: 2600);
+    await pumpApp(tester, height: 5200);
     await goTab(tester, '设置');
     expect(find.text('外观'), findsOneWidget);
 
@@ -171,7 +171,7 @@ void main() {
   });
 
   testWidgets('设置页有收款码入口（支持作者）', (tester) async {
-    await pumpApp(tester, height: 2600);
+    await pumpApp(tester, height: 5200);
     await goTab(tester, '设置');
     expect(find.text('支持作者'), findsOneWidget);
     expect(find.textContaining('5 元'), findsWidgets);
@@ -190,7 +190,7 @@ void main() {
   });
 
   testWidgets('设置页：数据位置 / WebDAV / 关于 三块都在', (tester) async {
-    await pumpApp(tester, height: 2600);
+    await pumpApp(tester, height: 5200);
     await goTab(tester, '设置');
     expect(find.textContaining('数据位置'), findsOneWidget);
     expect(find.textContaining('WebDAV'), findsWidgets);

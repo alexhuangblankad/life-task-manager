@@ -22,7 +22,7 @@ void main() {
   });
 
   test('建目录结构', () async {
-    for (final d in ['config', '大任务', '杂记', '日程', '月报', '回收站']) {
+    for (final d in ['config', '大任务', '杂记', '日程', '报告', '回收站']) {
       expect(await Directory('${tmp.path}/$d').exists(), isTrue, reason: '$d 应该被创建');
     }
   });

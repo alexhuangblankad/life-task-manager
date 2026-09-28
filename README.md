@@ -99,10 +99,32 @@ tags: [毕设, 机器人]
 
 ```bash
 flutter pub get
-flutter test                 # 80 个测试
+flutter test                 # 124 个测试
 flutter build windows --debug
-flutter build windows --release
 ```
+
+### 出发布版（注意：别直接在本目录 build --release）
+
+Flutter 的 AOT 汇编步骤在**中文路径**下会崩（MSBuild 按 GBK 解路径，读不到 app.dill），
+debug 构建不走 AOT 所以没事。用脚本绕开：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool\build_release.ps1
+```
+
+它会把源码复制到一个纯 ASCII 路径编译，再把产物拷到 `dist\`。
+`dist\` 里整个文件夹拷走就能用（用户数据不在程序目录，仍在 vault 里）。
+
+### 出安装包（给别人的那种）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool\build_installer.ps1
+```
+
+产物在 `dist_installer\LifeTaskManager-1.0.0-setup.exe`：中文向导、一路下一步、
+**能自己选安装位置**，装完自动建开始菜单和（可选的）桌面快捷方式。
+需要 Inno Setup 6（`winget install JRSoftware.InnoSetup`）。
+卸载**不会**删用户数据——数据在「文档\LifeTaskManager」，跟程序目录是分开的。
 
 想塞一份示例数据看效果：
 
@@ -124,10 +146,22 @@ dart run tool/webdav_check.dart http://127.0.0.1:8099/ u p /ltm
 - [x] 人生倒计时（年/天/时/分/秒，每秒跳动、进度百分比、今年/本月/本周还剩）
 - [x] 大任务 → 小任务，勾选写回 md，完成时可写任务杂记
 - [x] 日历：月视图 + 日程 + 到期任务 + 计划任务 + 当天日记
+- [x] 日历小趣味：农历/节气/干支、法定节假日（休/班）、节日祝福、历史上的今天，**每一项都能单独开关**
+- [x] 定时任务：🔁 每月15日、每月农历十五、每周一、每年农历八月十五…写进 md，到点提醒
+- [x] 任务提醒 🔔：到期当天 / 提前 N 天 / 指定时间（每条任务单独设）
+- [x] 日程提醒 🔔：开始时 / 提前 10 分钟 / 30 分钟 / 1 小时 / 1 天
+- [x] 小铃铛面板 + Windows 系统通知（同一件事只弹一次，可补最近 7 天错过的）
+- [x] AI 周报 / 双周报 / 月报 / 季报 / 自定义天数报告，**周期和时间点自己选**
+      （周报＝选周几总结上一周，月报＝选几号总结上个月，季度同理）
+- [x] AI 设置：自己填 API Key，内置 DeepSeek / 通义千问 / 智谱 / Kimi / 硅基流动 /
+      OpenAI / Claude / 本机 Ollama / 自定义 九家预设（类似 cc-switch 的一键切换）
+- [x] 评分分两层：客观分（本地规则，可复现）+ AI 主观分和评语，综合分取平均；
+      AI 没配好或网络挂了照样出报告，只是没有评语
+- [x] Windows 安装包（Inno Setup，中文向导、可选安装路径、卸载不动用户数据）
 - [x] 杂记：按月归档，Markdown 实时预览
 - [x] WebDAV 双向同步 + 冲突副本 + 回收站
 - [x] 亮/暗主题（默认跟随系统）、右下角托盘常驻、托盘悬停显示倒计时
-- [x] 80 个自动化测试（数据格式、倒计时、同步冲突、界面冒烟）
+- [x] 124 个自动化测试（数据格式、倒计时、重复规则、提醒规则、同步冲突、界面冒烟）
 
 规划中：
 - [ ] 月报系统：调用本地模型（Ollama）或 API，汇总当月倒计时变化 / 完成的任务 / 两种杂记 → 月度评分

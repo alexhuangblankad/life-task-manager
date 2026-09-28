@@ -6,16 +6,21 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/foundation.dart';
+import 'package:local_notifier/local_notifier.dart';
 
 import 'core/countdown.dart';
 import 'core/device_config.dart';
 import 'core/front_matter.dart';
 import 'core/history_today.dart';
 import 'core/ids.dart';
+import 'core/llm_client.dart';
 import 'core/reminder.dart';
+import 'core/report.dart';
+import 'model/ai_config.dart';
 import 'model/event.dart';
 import 'model/note.dart';
 import 'model/profile.dart';
+import 'model/report_cycle.dart';
 import 'model/task.dart';
 import 'sync/sync_engine.dart';
 import 'sync/webdav.dart';
@@ -276,6 +281,142 @@ class AppState extends ChangeNotifier {
     if (fire.isAfter(now)) return false;
     return now.difference(fire).inDays <= 7;
   }
+
+  // ─────────────────────── AI 周报 / 月报 ───────────────────────
+
+  AiConfig get ai => device.ai;
+
+  Future<void> saveAiConfig(AiConfig c) async {
+    device.ai = c;
+    await saveDeviceConfig();
+    notifyListeners();
+  }
+
+  /// 把某一期的原始数据汇成统计。
+  ///
+  /// 一期可能跨月（比如 9/28 ~ 10/4），所以涉及的每个月的杂记和日程都要读。
+  Future<PeriodSummary> collectSummary(ReportCycle cycle, DateTime today) async {
+    final p = cycle.previousPeriod(today);
+
+    final notes = <Note>[];
+    final events = <CalendarEvent>[];
+    var cursor = DateTime(p.first.year, p.first.month, 1);
+    while (!cursor.isAfter(p.last)) {
+      notes.addAll(await repo.loadNotes(cursor));
+      events.addAll(await repo.loadEvents(cursor));
+      cursor = DateTime(cursor.year, cursor.month + 1, 1);
+    }
+
+    // 定时任务：本期已经过去的每一天，该做的做了没
+    final repeats = <({String title, String task, bool done})>[];
+    for (var day = p.first; !day.isAfter(p.last) && !day.isAfter(today); day = day.add(const Duration(days: 1))) {
+      for (final item in repeatsOn(day)) {
+        repeats.add((
+          title: item.subtask.title,
+          task: item.task.task.title,
+          done: isRepeatDoneOn(item.subtask.id, day),
+        ));
+      }
+    }
+
+    return PeriodSummary.build(
+      label: p.label,
+      suffix: p.suffix,
+      title: p.title,
+      first: p.first,
+      last: p.last,
+      tasks: tasks,
+      notes: notes,
+      events: events,
+      repeatOccurrences: repeats,
+      now: today,
+      daysLeftStart: _daysLeftAt(p.first),
+      daysLeftEnd: _daysLeftAt(p.last),
+    );
+  }
+
+  int? _daysLeftAt(DateTime day) {
+    final target = profile.lifeTarget;
+    if (target == null) return null;
+    return calendarDaysBetween(day, target);
+  }
+
+  /// 已经生成过这一期了没
+  Future<bool> reportExistsFor(ReportCycle cycle, DateTime today) async {
+    final p = cycle.previousPeriod(today);
+    return await repo.readFileOrNull(VaultLayout.reportPath(p.label, p.suffix)) != null;
+  }
+
+  /// 生成一期报告。AI 挂了也照样出（客观分和统计不依赖模型）。
+  Future<PeriodReport> generateReport({ReportCycle? cycle, DateTime? today, bool withAi = true}) async {
+    final t = today ?? DateTime.now();
+    final c = cycle ?? ai.cycle;
+    final summary = await collectSummary(c, t);
+
+    AiReview? review;
+    String? err;
+    if (!withAi) {
+      err = null;
+    } else if (!ai.enabled) {
+      err = 'AI 评语没生成：设置里没打开';
+    } else if (!ai.ready) {
+      err = 'AI 评语没生成：发行商 / API Key / 模型名没配全';
+    } else {
+      try {
+        final text = await LlmClient().chat(
+          cfg: ai,
+          systemPrompt: '你是一个克制、务实的个人复盘助理。只输出要求的 JSON。',
+          userPrompt: buildReportPrompt(summary, extra: ai.extraPrompt),
+        );
+        review = AiReview.parse(text);
+      } on LlmException catch (e) {
+        err = e.message;
+      } catch (e) {
+        err = '$e';
+      }
+    }
+
+    final report = PeriodReport(
+      summary: summary,
+      generatedAt: t,
+      review: review,
+      aiError: err,
+      providerName: ai.provider.name,
+      modelName: ai.effectiveModel,
+    );
+    await repo.writeFile(VaultLayout.reportPath(summary.label, summary.suffix), report.toMarkdown());
+    notifyListeners();
+    return report;
+  }
+
+  /// 到点就自动生成上一期（启动时 + 每小时都会调一次，同一天只会生成一份）
+  Future<String?> maybeAutoReport() async {
+    if (!ai.anyReportOn || !ai.autoReport) return null;
+    final now = DateTime.now();
+    if (!ai.cycle.shouldRunOn(now)) return null;
+    if (await reportExistsFor(ai.cycle, now)) return null;
+    if (!ai.ready) return '到出报告的日子了，但 AI 还没配好（设置 → AI）';
+    try {
+      final report = await generateReport();
+      // 顺手弹个系统通知，不然生成完了也不知道
+      try {
+        final n = LocalNotification(
+          title: '${report.summary.title} ${report.summary.suffix}已生成',
+          body: '客观分 ${report.summary.objectiveScore} · 综合 ${report.overallScore}',
+        );
+        await n.show();
+      } catch (_) {}
+      return '已生成上一期报告（${ai.cycle.unit.suffix}）';
+    } catch (e) {
+      return '生成报告失败：$e';
+    }
+  }
+
+  /// 已有的报告列表（新的在前）
+  Future<List<String>> listReports() => repo.listFiles(VaultLayout.reportDir, extension: '.md');
+
+  Future<String?> readReport(String fileName) =>
+      repo.readFileOrNull('${VaultLayout.reportDir}/$fileName');
 
   Future<void> reloadAll() async {
     await _loadAll();

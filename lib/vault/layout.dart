@@ -14,7 +14,8 @@ class VaultLayout {
   static const String taskDir = '大任务';
   static const String noteDir = '杂记';
   static const String eventDir = '日程';
-  static const String reportDir = '月报';
+  /// 周报、月报、季报都放这个文件夹
+  static const String reportDir = '报告';
   static const String trashDir = '回收站';
 
   static const String profilePath = '$configDir/profile.json';
@@ -34,7 +35,8 @@ class VaultLayout {
   static String taskNotePath(DateTime d, String slug) =>
       '${taskNoteDir(d)}/${isoDate(d)}_${sanitize(slug)}.md';
 
-  static String monthReportPath(DateTime d) => '$reportDir/${monthFolder(d)}-月报.md';
+  /// 报告文件路径：报告/2026-09-周报.md
+  static String reportPath(String label, String suffix) => '$reportDir/$label-$suffix.md';
 
   static String eventMonthPath(DateTime d) => '$eventDir/${monthFolder(d)}.json';
 

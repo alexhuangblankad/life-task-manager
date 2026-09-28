@@ -208,6 +208,20 @@ class VaultRepository {
     await f.writeAsString(content);
   }
 
+  /// 列某个目录下的文件名（用于「报告」列表这种场景）
+  Future<List<String>> listFiles(String relDir, {String? extension}) async {
+    final dir = Directory(abs(relDir));
+    if (!await dir.exists()) return const [];
+    final names = <String>[];
+    await for (final e in dir.list()) {
+      if (e is File && (extension == null || e.path.endsWith(extension))) {
+        names.add(e.uri.pathSegments.last);
+      }
+    }
+    names.sort((a, b) => b.compareTo(a)); // 新的在前
+    return names;
+  }
+
   Future<void> deleteFile(String relPath) async {
     final f = File(abs(relPath));
     if (await f.exists()) await f.delete();

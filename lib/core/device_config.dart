@@ -9,6 +9,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../model/ai_config.dart';
+
 const String kAppDirName = 'LifeTaskManager';
 
 class WebdavConfig {
@@ -72,6 +74,7 @@ class DeviceConfig {
     this.lastSyncAt,
     this.themeMode = 'system',
     this.runInTray = true,
+    this.ai = const AiConfig(),
   });
 
   String vaultPath;
@@ -85,6 +88,9 @@ class DeviceConfig {
   /// 关窗口时缩到右下角托盘，而不是退出
   bool runInTray;
 
+  /// AI 周报/月报（含 API Key，只存本机，不参与同步）
+  AiConfig ai;
+
   Map<String, dynamic> toJson() => {
         'version': 1,
         'vault_path': vaultPath,
@@ -93,6 +99,7 @@ class DeviceConfig {
         'last_sync_at': lastSyncAt?.toIso8601String(),
         'theme_mode': themeMode,
         'run_in_tray': runInTray,
+        'ai': ai.toJson(),
       };
 
   static DeviceConfig fromJson(Map<String, dynamic> j) => DeviceConfig(
@@ -102,6 +109,7 @@ class DeviceConfig {
         lastSyncAt: DateTime.tryParse((j['last_sync_at'] ?? '').toString()),
         themeMode: (j['theme_mode'] ?? 'system').toString(),
         runInTray: j['run_in_tray'] is bool ? j['run_in_tray'] as bool : true,
+        ai: AiConfig.fromJson((j['ai'] as Map?)?.cast<String, dynamic>() ?? const {}),
       );
 }
 

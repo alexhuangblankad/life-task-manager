@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -28,6 +29,14 @@ Future<void> main() async {
     await state.startReminders(localDir);
     // 520KB 的历史数据延后解析，不挡启动
     await state.ensureHistory();
+
+    // AI 周报/月报：启动先看一眼（可能今天就是出报告的日子），之后每小时看一次
+    final first = await state.maybeAutoReport();
+    if (first != null) debugPrint('[报告] $first');
+    Timer.periodic(const Duration(hours: 1), (_) async {
+      final msg = await state.maybeAutoReport();
+      if (msg != null) debugPrint('[报告] $msg');
+    });
   });
 }
 

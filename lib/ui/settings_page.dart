@@ -6,6 +6,7 @@ import '../app_state.dart';
 import '../core/device_config.dart';
 import '../model/profile.dart';
 import '../utils/date_text.dart';
+import 'ai_settings_card.dart';
 import 'home_page.dart';
 import 'profile_dialog.dart';
 import 'theme.dart';
@@ -143,6 +144,10 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+          const SizedBox(height: Gaps.l),
+
+          // ── AI 周报 / 月报 ──
+          AiSettingsCard(state: s),
           const SizedBox(height: Gaps.l),
 
           // ── 日历小趣味 ──
