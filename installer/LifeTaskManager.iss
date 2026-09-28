@@ -1,4 +1,4 @@
-; 人生任务管理器 —— Windows 安装包脚本（Inno Setup 6）
+﻿; 人生任务管理器 —— Windows 安装包脚本（Inno Setup 6）
 ;
 ; 用法：powershell -ExecutionPolicy Bypass -File tool\build_installer.ps1
 ; 产物：dist_installer\LifeTaskManager-1.0.0-setup.exe
@@ -10,7 +10,7 @@
 
 #define AppName "人生任务管理器"
 #define AppNameEn "LifeTaskManager"
-#define AppVersion "1.0.1"
+#define AppVersion "1.0.2"
 #define AppExe "life_task_manager.exe"
 #define AppPublisher "LifeTaskManager"
 

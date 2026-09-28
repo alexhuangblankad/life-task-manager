@@ -1,4 +1,4 @@
-# 装安卓构建工具链：JDK 17 + Android SDK（cmdline-tools）
+﻿# 装安卓构建工具链：JDK 17 + Android SDK（cmdline-tools）
 #
 # 用法：powershell -ExecutionPolicy Bypass -File tool\setup_android.ps1
 # 工具都装自己目录（跟 Flutter / VS BuildTools 一样），不塞项目文件夹：
@@ -65,7 +65,6 @@ Write-Host ''
 Write-Host '=== [4/4] 装 SDK 组件并接受许可 ==='
 $pkgs = @('platform-tools', 'platforms;android-35', 'build-tools;35.0.0')
 Write-Host '  接受许可…'
-'y' * 60 -split '' | Where-Object { $_ -eq 'y' } | & "$env:JAVA_HOME\bin\java.exe" -version | Out-Null
 $yes = ('y' + [Environment]::NewLine) * 60
 $yes | & $sdkmanager --sdk_root=$sdkRoot --licenses 2>&1 | Select-Object -Last 3
 Write-Host '  装组件…'
