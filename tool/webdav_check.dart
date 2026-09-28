@@ -53,8 +53,10 @@ Future<void> main(List<String> args) async {
       await client.put('a/b.md', '内容二\n', ifMatch: etag);
       check('If-Match 带正确 ETag 能写', true);
       try {
-        await client.put('a/b.md', '拿旧 ETag 硬写', ifMatch: '"不存在的etag"');
-        check('412 冲突检测', false, '旧 ETag 居然写成功了——远端覆盖会丢数据');
+        // 用假的 ETag 硬写：服务器必须拒绝（412），否则说明"带条件的写"没生效，
+        // 多设备同时改同一个文件就会静默覆盖
+        await client.put('a/b.md', '拿旧 ETag 硬写', ifMatch: '"deadbeefdeadbeef"');
+        check('412 冲突检测', false, '假 ETag 居然写成功了——远端覆盖会丢数据');
       } catch (e) {
         check('412 冲突检测', e is WebdavException && e.isPreconditionFailed, '$e');
       }
@@ -67,6 +69,9 @@ Future<void> main(List<String> args) async {
   check('DELETE', !await client.exists('a/b.md'));
 
   print('\n=== 2. 两个 vault 通过服务器互相同步 ===');
+  // 用一个独立的同步根，别和上面 HTTP 层测试留下的文件混在一起
+  final syncRoot = '$root-同步测试';
+  final client2 = WebdavClient(baseUrl: url, username: user, password: pass, remoteRoot: syncRoot);
   final tmp = await Directory.systemTemp.createTemp('ltm_dav_');
   final vaultA = VaultRepository('${tmp.path}/A');
   final vaultB = VaultRepository('${tmp.path}/B');
@@ -82,20 +87,20 @@ Future<void> main(List<String> args) async {
 
   final engineA = SyncEngine(
     repo: vaultA,
-    backend: client,
+    backend: client2,
     stateStore: SyncStateStore('${tmp.path}/stateA.json'),
     deviceName: '电脑A',
-    remoteRoot: root,
+    remoteRoot: syncRoot,
   );
   final rA = await engineA.sync();
-  check('A 上传', rA.errors.isEmpty && rA.uploaded >= 2, rA.summary);
+  check('A 上传', rA.errors.isEmpty && rA.uploaded >= 2 && rA.conflicts == 0, rA.summary);
 
   final engineB = SyncEngine(
     repo: vaultB,
-    backend: client,
+    backend: client2,
     stateStore: SyncStateStore('${tmp.path}/stateB.json'),
     deviceName: '手机B',
-    remoteRoot: root,
+    remoteRoot: syncRoot,
   );
   final rB = await engineB.sync();
   check('B 下载', rB.errors.isEmpty && rB.downloaded >= 2, rB.summary);
@@ -130,8 +135,9 @@ Future<void> main(List<String> args) async {
       'A:${rA4.summary} | B:${rB4.summary}');
 
   print('\n=== 3. 限流统计 ===');
-  print('  本次总共发出 ${client.requestCount} 次请求（坚果云免费版限额：30 分钟 600 次）');
+  print('  本次总共发出 ${client.requestCount + client2.requestCount} 次请求（坚果云免费版限额：30 分钟 600 次）');
   client.close();
+  client2.close();
   try {
     await tmp.delete(recursive: true);
   } catch (_) {}
