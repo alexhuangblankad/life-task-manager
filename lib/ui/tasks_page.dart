@@ -385,156 +385,10 @@ Future<void> _showNewTaskDialog(BuildContext context, AppState state) async {
   );
 }
 
-/// 重复规则选择器（定时任务用）
-class _RepeatPicker extends StatefulWidget {
-  const _RepeatPicker({required this.initial, required this.onChanged});
-
-  final RepeatRule? initial;
-  final ValueChanged<RepeatRule?> onChanged;
-
-  @override
-  State<_RepeatPicker> createState() => _RepeatPickerState();
-}
-
-class _RepeatPickerState extends State<_RepeatPicker> {
-  static const _kinds = ['不重复', '每天', '每周', '每月', '每月农历', '每年'];
-
-  late String _kind;
-  late int _day;
-  late int _month;
-
-  @override
-  void initState() {
-    super.initState();
-    final r = widget.initial;
-    if (r == null) {
-      _kind = '不重复';
-      _day = 1;
-      _month = 1;
-    } else {
-      _kind = switch (r.kind) {
-        RepeatKind.daily => '每天',
-        RepeatKind.weekly => '每周',
-        RepeatKind.monthly => '每月',
-        RepeatKind.lunarMonthly => '每月农历',
-        RepeatKind.yearly || RepeatKind.lunarYearly => '每年',
-      };
-      _day = r.day ?? 1;
-      _month = r.month ?? 1;
-    }
-  }
-
-  void _emit() {
-    switch (_kind) {
-      case '不重复':
-        widget.onChanged(null);
-      case '每天':
-        widget.onChanged(const RepeatRule(kind: RepeatKind.daily));
-      case '每周':
-        widget.onChanged(RepeatRule(kind: RepeatKind.weekly, day: _day.clamp(1, 7)));
-      case '每月':
-        widget.onChanged(RepeatRule(kind: RepeatKind.monthly, day: _day.clamp(1, 31)));
-      case '每月农历':
-        widget.onChanged(RepeatRule(kind: RepeatKind.lunarMonthly, day: _day.clamp(1, 30)));
-      case '每年':
-        widget.onChanged(RepeatRule(
-          kind: widget.initial?.kind == RepeatKind.lunarYearly ? RepeatKind.lunarYearly : RepeatKind.yearly,
-          month: _month.clamp(1, 12),
-          day: _day.clamp(1, 31),
-        ));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        DropdownButtonFormField<String>(
-          initialValue: _kind,
-          decoration: const InputDecoration(
-            labelText: '定时任务 🔁',
-            helperText: '例：每月15日交房租、每月农历十五上香、每周一开组会',
-          ),
-          items: [for (final k in _kinds) DropdownMenuItem(value: k, child: Text(k))],
-          onChanged: (v) {
-            if (v == null) return;
-            setState(() => _kind = v);
-            _emit();
-          },
-        ),
-        if (_kind == '每周')
-          DropdownButtonFormField<int>(
-            initialValue: _day.clamp(1, 7),
-            decoration: const InputDecoration(labelText: '周几'),
-            items: [
-              for (var i = 1; i <= 7; i++)
-                DropdownMenuItem(value: i, child: Text(['一', '二', '三', '四', '五', '六', '日'][i - 1])),
-            ],
-            onChanged: (v) {
-              setState(() => _day = v ?? 1);
-              _emit();
-            },
-          ),
-        if (_kind == '每年')
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue: _month.toString(),
-                  decoration: const InputDecoration(labelText: '月份'),
-                  keyboardType: TextInputType.number,
-                  onChanged: (v) {
-                    _month = int.tryParse(v) ?? 1;
-                    _emit();
-                  },
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextFormField(
-                  initialValue: _day.toString(),
-                  decoration: const InputDecoration(labelText: '几号'),
-                  keyboardType: TextInputType.number,
-                  onChanged: (v) {
-                    _day = int.tryParse(v) ?? 1;
-                    _emit();
-                  },
-                ),
-              ),
-            ],
-          )
-        else if (_kind == '每月' || _kind == '每月农历')
-          TextFormField(
-            initialValue: _day.toString(),
-            decoration: InputDecoration(
-              labelText: '几号',
-              helperText: _kind == '每月农历' ? '农历：1-30，例如 15 = 十五' : '公历：1-31',
-            ),
-            keyboardType: TextInputType.number,
-            onChanged: (v) {
-              _day = int.tryParse(v) ?? 1;
-              _emit();
-            },
-          ),
-        if (_kind != '不重复' && _kind != '每天')
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              '规则：${widget.initial?.label ?? ""}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 Future<void> _showAddSubtaskDialog(BuildContext context, AppState state, TaskFile tf) async {
   final title = TextEditingController();
   DateTime? due;
   DateTime? scheduled;
-  RepeatRule? repeat;
   RemindRule? reminder;
   var priority = Priority.none;
 
@@ -574,11 +428,6 @@ Future<void> _showAddSubtaskDialog(BuildContext context, AppState state, TaskFil
                 onChanged: (d) => setState(() => due = d),
               ),
               const SizedBox(height: 12),
-              _RepeatPicker(
-                initial: repeat,
-                onChanged: (r) => setState(() => repeat = r),
-              ),
-              const SizedBox(height: 12),
               RemindPicker(
                 initial: reminder,
                 onChanged: (r) => setState(() => reminder = r),
@@ -611,7 +460,6 @@ Future<void> _showAddSubtaskDialog(BuildContext context, AppState state, TaskFil
                   title: t,
                   due: due,
                   scheduled: scheduled,
-                  repeat: repeat,
                   reminder: reminder,
                   priority: priority,
                 ),
@@ -694,11 +542,6 @@ Future<void> _showEditSubtaskDialog(BuildContext context, AppState state, TaskFi
                 hint: '最晚什么时候做完',
                 value: due,
                 onChanged: (d) => setState(() => due = d),
-              ),
-              const SizedBox(height: 12),
-              _RepeatPicker(
-                initial: repeat,
-                onChanged: (r) => setState(() => repeat = r),
               ),
               const SizedBox(height: 12),
               RemindPicker(

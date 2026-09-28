@@ -3,6 +3,7 @@ library;
 
 import '../core/ids.dart';
 import 'reminder_rule.dart';
+import 'repeat.dart';
 import 'task.dart' show formatDate;
 
 class CalendarEvent {
@@ -17,6 +18,7 @@ class CalendarEvent {
     this.note,
     this.colorIndex = 0,
     this.reminder,
+    this.repeat,
   });
 
   final String id;
@@ -39,10 +41,27 @@ class CalendarEvent {
   /// 日程自己的提醒（提前 N 分钟 / 开始时）
   final RemindRule? reminder;
 
+  /// 重复规则：每天 / 每周X / 每月N日 / 每月农历初一、十五 / 每年…
+  /// 「日程」就是拿来提醒的，所以周期性提醒放这儿，不放待办里。
+  final RepeatRule? repeat;
+
   DateTime get effectiveEnd => end ?? start;
 
   /// 提醒应该在什么时候弹
   DateTime? get remindAt => reminder?.fireFrom(start);
+
+  /// 这天有没有这条日程：显式落在这天（含跨天），或者命中重复规则
+  bool occursOnDay(DateTime day) {
+    if (onDay(day)) return true;
+    final r = repeat;
+    if (r == null) return false;
+    final d = DateTime(day.year, day.month, day.day);
+    final s = DateTime(start.year, start.month, start.day);
+    if (d.isBefore(s)) return false; // 重复从创建那天起算，不往前追溯
+    return r.occursOn(d);
+  }
+
+  bool get isRepeating => repeat != null;
 
   bool onDay(DateTime day) {
     final d = DateTime(day.year, day.month, day.day);
@@ -64,6 +83,8 @@ class CalendarEvent {
     int? colorIndex,
     RemindRule? reminder,
     bool clearReminder = false,
+    RepeatRule? repeat,
+    bool clearRepeat = false,
   }) =>
       CalendarEvent(
         id: id,
@@ -76,6 +97,7 @@ class CalendarEvent {
         note: note ?? this.note,
         colorIndex: colorIndex ?? this.colorIndex,
         reminder: clearReminder ? null : (reminder ?? this.reminder),
+        repeat: clearRepeat ? null : (repeat ?? this.repeat),
       );
 
   Map<String, dynamic> toJson() => {
@@ -89,6 +111,8 @@ class CalendarEvent {
         if (note != null) 'note': note,
         'color': colorIndex,
         if (reminder != null) 'remind': reminder!.toJson(),
+        // 重复规则按「人话标签」存，读回来用同一套解析器（跟 md 里一致）
+        if (repeat != null) 'repeat': repeat!.label,
       };
 
   static CalendarEvent fromJson(Map<String, dynamic> json) => CalendarEvent(
@@ -104,6 +128,7 @@ class CalendarEvent {
         reminder: json['remind'] is Map
             ? RemindRule.fromJson(Map<String, dynamic>.from(json['remind'] as Map))
             : null,
+        repeat: _nullable(json['repeat']) == null ? null : RepeatRule.parse(json['repeat'].toString()),
       );
 
   /// 给人看的日期范围文案

@@ -20,6 +20,7 @@ import 'model/ai_config.dart';
 import 'model/event.dart';
 import 'model/note.dart';
 import 'model/profile.dart';
+import 'model/reminder_rule.dart';
 import 'model/report_cycle.dart';
 import 'model/task.dart';
 import 'sync/sync_engine.dart';
@@ -262,14 +263,44 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    // 日程自己设的提醒
+    // 日程自己设的提醒（重复日程每次发生都会提醒）
     for (final e in events) {
       final at = e.remindAt;
-      if (e.done || at == null || !_due(at, now)) continue;
+      if (e.done || at == null) continue;
+      final occurs = e.occursOnDay(today);
+      final repeating = e.isRepeating;
+      if (!occurs && !repeating) continue;
+
+      // 重复日程：把提醒时刻挪到今天来算（比如「每月初一 08:00 提醒」）
+      final DateTime fire;
+      if (repeating) {
+        final base = DateTime(today.year, today.month, today.day, e.start.hour, e.start.minute);
+        final r = e.reminder;
+        if (r == null) continue;
+        switch (r.kind) {
+          case RemindKind.minutesBefore:
+            fire = base.subtract(Duration(minutes: r.minutes ?? 0));
+          case RemindKind.atTime:
+            fire = r.at ?? base;
+          case RemindKind.onDueDay:
+            fire = base;
+          case RemindKind.daysBefore:
+            fire = base.subtract(Duration(days: r.days ?? 0));
+        }
+        if (!occurs) continue;
+      } else {
+        fire = at;
+      }
+
+      if (!_due(fire, now)) continue;
       out.add(ReminderItem(
-        key: 'evt-${e.id}-${e.start.toIso8601String()}',
+        key: 'evt-${e.id}-${fire.toIso8601String()}',
         title: '日程：${e.title}',
-        body: '${formatDate(e.start)} ${e.timeLabel} · ${e.reminder!.label}',
+        body: [
+          '${formatDate(e.start)} ${e.timeLabel}',
+          if (e.repeat != null) e.repeat!.label,
+          e.reminder!.label,
+        ].join(' · '),
       ));
     }
 
@@ -288,6 +319,18 @@ class AppState extends ChangeNotifier {
 
   Future<void> saveAiConfig(AiConfig c) async {
     device.ai = c;
+    await saveDeviceConfig();
+    notifyListeners();
+  }
+
+  // ─────────────────────── 字体与字号 ───────────────────────
+
+  String get fontChoice => device.fontChoice;
+  String get fontScale => device.fontScale;
+
+  Future<void> setFont({String? choice, String? scale}) async {
+    if (choice != null) device.fontChoice = choice;
+    if (scale != null) device.fontScale = scale;
     await saveDeviceConfig();
     notifyListeners();
   }
@@ -580,7 +623,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<CalendarEvent> eventsOfDay(DateTime day) => events.where((e) => e.onDay(day)).toList();
+  /// 某天的日程：显式落在这天的 + 命中重复规则的（每月初一、十五这种）
+  List<CalendarEvent> eventsOfDay(DateTime day) => events.where((e) => e.occursOnDay(day)).toList();
 
   /// 某天到期的小任务（日历要和待办联动，靠的就是这个）
   List<({TaskFile task, SubTask subtask})> subtasksDueOn(DateTime day) {

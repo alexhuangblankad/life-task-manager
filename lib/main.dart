@@ -53,8 +53,8 @@ class LifeTaskManagerApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: '人生任务管理器',
         debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(Brightness.light),
-        darkTheme: buildAppTheme(Brightness.dark),
+        theme: buildAppTheme(Brightness.light, fontChoice: state.fontChoice, fontScale: state.fontScale),
+        darkTheme: buildAppTheme(Brightness.dark, fontChoice: state.fontChoice, fontScale: state.fontScale),
         themeMode: state.themeMode,
         locale: const Locale('zh', 'CN'),
         localizationsDelegates: const [

@@ -66,6 +66,16 @@ flutter:
 
   uses-material-design: true
 
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-VF.ttf
+          weight: 400
+        - asset: assets/fonts/NotoSansSC-VF.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSansSC-VF.ttf
+          weight: 700
+
   assets:
     - assets/donate_qr.png
     - assets/tray.ico

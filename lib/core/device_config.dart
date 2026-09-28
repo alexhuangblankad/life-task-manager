@@ -75,6 +75,8 @@ class DeviceConfig {
     this.themeMode = 'system',
     this.runInTray = true,
     this.ai = const AiConfig(),
+    this.fontChoice = 'noto',
+    this.fontScale = 'normal',
   });
 
   String vaultPath;
@@ -91,6 +93,12 @@ class DeviceConfig {
   /// AI 周报/月报（含 API Key，只存本机，不参与同步）
   AiConfig ai;
 
+  /// 界面字体：'noto'（内置 Noto Sans SC）或 'system'（跟随系统）
+  String fontChoice;
+
+  /// 字号档位：small / normal / large / huge
+  String fontScale;
+
   Map<String, dynamic> toJson() => {
         'version': 1,
         'vault_path': vaultPath,
@@ -100,6 +108,8 @@ class DeviceConfig {
         'theme_mode': themeMode,
         'run_in_tray': runInTray,
         'ai': ai.toJson(),
+        'font_choice': fontChoice,
+        'font_scale': fontScale,
       };
 
   static DeviceConfig fromJson(Map<String, dynamic> j) => DeviceConfig(
@@ -110,6 +120,8 @@ class DeviceConfig {
         themeMode: (j['theme_mode'] ?? 'system').toString(),
         runInTray: j['run_in_tray'] is bool ? j['run_in_tray'] as bool : true,
         ai: AiConfig.fromJson((j['ai'] as Map?)?.cast<String, dynamic>() ?? const {}),
+        fontChoice: (j['font_choice'] ?? 'noto').toString(),
+        fontScale: (j['font_scale'] ?? 'normal').toString(),
       );
 }
 

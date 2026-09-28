@@ -142,6 +142,52 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: const Text('关窗口时缩到右下角托盘'),
                 subtitle: const Text('像微信一样常驻后台；托盘图标悬停能看到人生倒计时，右键可同步或退出'),
               ),
+              const Divider(height: 24),
+              Row(
+                children: [
+                  const SizedBox(width: 72, child: Text('字体')),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: s.fontChoice,
+                      isDense: true,
+                      decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                      items: [
+                        for (final f in kFontChoices)
+                          DropdownMenuItem(value: f.id, child: Text(f.name, style: const TextStyle(fontSize: 14))),
+                      ],
+                      onChanged: (v) async {
+                        if (v == null) return;
+                        await s.setFont(choice: v);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const SizedBox(width: 72, child: Text('字号')),
+                  Expanded(
+                    child: SegmentedButton<String>(
+                      segments: [
+                        for (final f in kFontScales) ButtonSegment(value: f.id, label: Text(f.name)),
+                      ],
+                      selected: {s.fontScale},
+                      onSelectionChanged: (v) async {
+                        await s.setFont(scale: v.first);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '看不清就先调字号。默认字体是内置的 Noto Sans SC（开源，观感接近苹果的苹方，'
+                '笔画比系统默认的雅黑清楚），安卓上也自带一份，不用看系统脸色。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
           const SizedBox(height: Gaps.l),

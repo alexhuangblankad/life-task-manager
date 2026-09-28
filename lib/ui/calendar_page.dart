@@ -7,11 +7,13 @@ import '../core/history_today.dart';
 import '../core/ids.dart';
 import '../model/event.dart';
 import '../model/reminder_rule.dart';
+import '../model/repeat.dart';
 import '../utils/date_text.dart';
 import 'home_page.dart';
 import 'markdown_view.dart';
 import 'note_editor.dart';
 import 'remind_picker.dart';
+import 'repeat_picker.dart';
 import 'theme.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -211,6 +213,7 @@ class _CalendarPageState extends State<CalendarPage> {
     var end = DateTime(day.year, day.month, day.day, 10);
     String? taskId;
     RemindRule? reminder;
+    RepeatRule? repeat;
 
     await showDialog<void>(
       context: context,
@@ -259,6 +262,18 @@ class _CalendarPageState extends State<CalendarPage> {
                     onChanged: (v) => setState(() => reminder = v),
                     start: allDay ? null : start,
                   ),
+                  const Divider(height: 22),
+                  RepeatPicker(
+                    initial: repeat,
+                    onChanged: (v) => setState(() => repeat = v),
+                    title: '重复 🔁',
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '周期性提醒放这儿：比如「每月农历初一、十五」吃素，'
+                    '或「每周一三五」跑步。设了重复，后面每个月的那几天都会自动出现并提醒。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ],
               ),
             ),
@@ -276,6 +291,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     allDay: allDay,
                     taskId: taskId,
                     reminder: reminder,
+                    repeat: repeat,
                   ));
                   if (context.mounted) Navigator.pop(context);
                 },
@@ -450,6 +466,7 @@ class _DayPanel extends StatelessWidget {
                     subtitle: Text(
                       [
                         e.timeLabel,
+                        if (e.repeat != null) '🔁 ${e.repeat!.label}',
                         if (e.reminder != null) '🔔 ${e.reminder!.label}',
                         if (e.taskId != null)
                           '关联：${state.tasks.where((t) => t.task.id == e.taskId).map((t) => t.task.title).join()}',

@@ -15,7 +15,7 @@ import 'package:lunar/lunar.dart';
 enum RepeatKind { daily, weekly, monthly, yearly, lunarMonthly, lunarYearly }
 
 class RepeatRule {
-  const RepeatRule({required this.kind, this.day, this.month});
+  const RepeatRule({required this.kind, this.day, this.month, this.daysList = const []});
 
   final RepeatKind kind;
 
@@ -24,6 +24,19 @@ class RepeatRule {
 
   /// yearly / lunarYearly 的月份
   final int? month;
+
+  /// 一个周期里的多个日子，例如「每月农历初一、十五」→ [1, 15]
+  /// 有它就以它为准（day 只在单个日子的老写法里用）
+  final List<int> daysList;
+
+  /// 实际生效的日子集合（单个或多个统一成列表）
+  List<int> get effectiveDays {
+    if (daysList.isNotEmpty) return daysList;
+    if (day != null) return [day!];
+    return const [];
+  }
+
+  bool get isMulti => daysList.length > 1;
 
   static const List<String> _weekNames = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -41,28 +54,40 @@ class RepeatRule {
 
     if (s == '每天' || s == '每日' || s == 'daily') return const RepeatRule(kind: RepeatKind.daily);
 
-    // 每周一 / 每周日
-    final weekly = RegExp(r'^每?周([一二三四五六日天])$').firstMatch(s);
+    // 每周一 / 每周日 / 每周一、三、五
+    final weekly = RegExp(r'^每?周((?:[一二三四五六日天][、,，]?)+)$').firstMatch(s);
     if (weekly != null) {
-      var w = _weekNames.indexOf(weekly.group(1)!.replaceAll('天', '日')) + 1;
-      if (w < 1) w = 7;
-      return RepeatRule(kind: RepeatKind.weekly, day: w);
+      final ws = <int>[];
+      for (final p in weekly.group(1)!.split(RegExp(r'[、,，]'))) {
+        if (p.isEmpty) continue;
+        var w = _weekNames.indexOf(p.replaceAll('天', '日')) + 1;
+        if (w < 1) w = 7;
+        if (!ws.contains(w)) ws.add(w);
+      }
+      if (ws.isEmpty) return null;
+      return ws.length == 1
+          ? RepeatRule(kind: RepeatKind.weekly, day: ws.first)
+          : RepeatRule(kind: RepeatKind.weekly, daysList: ws);
     }
 
-    // 每月农历十五 / 每月农历廿三
+    // 每月农历十五 / 每月农历初一、十五
     final lunarMonthly = RegExp(r'^每月农历(.+)$').firstMatch(s);
     if (lunarMonthly != null) {
-      final d = chineseNumber(lunarMonthly.group(1)!);
-      if (d != null && d >= 1 && d <= 30) return RepeatRule(kind: RepeatKind.lunarMonthly, day: d);
-      return null;
+      final ds = _parseDays(lunarMonthly.group(1)!, max: 30, lunar: true);
+      if (ds.isEmpty) return null;
+      return ds.length == 1
+          ? RepeatRule(kind: RepeatKind.lunarMonthly, day: ds.first)
+          : RepeatRule(kind: RepeatKind.lunarMonthly, daysList: ds);
     }
 
-    // 每月15日 / 每月15号
-    final monthly = RegExp(r'^每月(\d{1,2})[日号]$').firstMatch(s);
+    // 每月15日 / 每月1、15号
+    final monthly = RegExp(r'^每月(.+)$').firstMatch(s);
     if (monthly != null) {
-      final d = int.parse(monthly.group(1)!);
-      if (d >= 1 && d <= 31) return RepeatRule(kind: RepeatKind.monthly, day: d);
-      return null;
+      final ds = _parseDays(monthly.group(1)!, max: 31);
+      if (ds.isEmpty) return null;
+      return ds.length == 1
+          ? RepeatRule(kind: RepeatKind.monthly, day: ds.first)
+          : RepeatRule(kind: RepeatKind.monthly, daysList: ds);
     }
 
     // 每年农历八月十五
@@ -97,35 +122,64 @@ class RepeatRule {
     return null;
   }
 
+  /// 解析「初一、十五」「1,15」这种一个周期里的多个日子
+  static List<int> _parseDays(String raw, {required int max, bool lunar = false}) {
+    final out = <int>[];
+    for (final part in raw.split(RegExp(r'[、,，和及\s]+'))) {
+      var t = part.trim();
+      if (t.isEmpty) continue;
+      t = t.replaceAll(RegExp(r'[日号]$'), '');
+      final v = lunar ? chineseNumber(t) : int.tryParse(t);
+      if (v == null || v < 1 || v > max) continue;
+      if (!out.contains(v)) out.add(v);
+    }
+    out.sort();
+    return out;
+  }
+
   // ─────────────────── 展示 ───────────────────
 
-  String get label => switch (kind) {
-        RepeatKind.daily => '每天',
-        RepeatKind.weekly => '每周${_weekNames[((day ?? 1) - 1).clamp(0, 6)]}',
-        RepeatKind.monthly => '每月${day ?? 1}日',
-        RepeatKind.lunarMonthly => '每月农历${lunarDayLabel(day ?? 1)}',
-        RepeatKind.yearly => '每年${month ?? 1}月${day ?? 1}日',
-        RepeatKind.lunarYearly =>
-          '每年农历${chineseMonthLabel(month ?? 1)}月${lunarDayLabel(day ?? 1)}',
-      };
+  String get label {
+    final ds = effectiveDays;
+    final multi = isMulti;
+    switch (kind) {
+      case RepeatKind.daily:
+        return '每天';
+      case RepeatKind.weekly:
+        final names = ds.map((d) => _weekNames[(d - 1).clamp(0, 6)]).join('、');
+        return '每周$names';
+      case RepeatKind.monthly:
+        return '每月${ds.join('、')}日';
+      case RepeatKind.lunarMonthly:
+        return '每月农历${ds.map(lunarDayLabel).join('、')}';
+      case RepeatKind.yearly:
+        return '每年${month ?? 1}月${day ?? 1}日';
+      case RepeatKind.lunarYearly:
+        return '每年农历${chineseMonthLabel(month ?? 1)}月${lunarDayLabel(day ?? 1)}';
+    }
+    // 上面都 return 了；这行只是让编译器闭嘴
+    // ignore: dead_code
+    return multi ? ds.join('、') : '';
+  }
 
   String toMarkdown() => '🔁 $label';
 
   // ─────────────────── 计算 ───────────────────
 
   bool occursOn(DateTime d) {
+    final ds = effectiveDays;
     switch (kind) {
       case RepeatKind.daily:
         return true;
       case RepeatKind.weekly:
-        return d.weekday == day;
+        return ds.contains(d.weekday);
       case RepeatKind.monthly:
-        return d.day == day;
+        return ds.contains(d.day);
       case RepeatKind.yearly:
         return d.month == month && d.day == day;
       case RepeatKind.lunarMonthly:
         final lunar = Solar.fromYmd(d.year, d.month, d.day).getLunar();
-        return _lunarDay(lunar) == day;
+        return ds.contains(_lunarDay(lunar));
       case RepeatKind.lunarYearly:
         final lunar = Solar.fromYmd(d.year, d.month, d.day).getLunar();
         return _lunarMonth(lunar) == month && _lunarDay(lunar) == day;
