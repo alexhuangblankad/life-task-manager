@@ -175,4 +175,4 @@ dart run tool/webdav_check.dart http://127.0.0.1:8099/ u p /ltm
 
 ## 许可
 
-MIT（可以随意使用、修改、再分发，保留版权声明即可）。
+MIT（见 [LICENSE](LICENSE)，可以随意使用、修改、再分发，保留版权声明即可）。

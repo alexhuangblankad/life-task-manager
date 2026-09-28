@@ -3,6 +3,8 @@
 /// 周期可选：每周（选周几总结上一周）/ 每两周 / 每月（选几号）/ 每季度 / 自定义天数。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -27,6 +29,9 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
   late TextEditingController _extra;
   var _busy = false;
 
+  /// 输入框防抖：每敲一个字就写盘 + 刷新整个界面会卡，攒 700ms 再存
+  Timer? _debounce;
+
   AppState get s => widget.state;
   AiConfig get cfg => s.ai;
 
@@ -36,20 +41,30 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     _loadControllers();
   }
 
-  void _loadControllers() {
-    _key = TextEditingController(text: cfg.apiKey);
-    _model = TextEditingController(text: cfg.model);
-    _baseUrl = TextEditingController(text: cfg.baseUrl);
-    _extra = TextEditingController(text: cfg.extraPrompt);
+  /// 文字类配置用这个：延迟保存，避免每个按键都写文件
+  void _applyDebounced(AiConfig next) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 700), () async {
+      await s.saveAiConfig(next);
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _key.dispose();
     _model.dispose();
     _baseUrl.dispose();
     _extra.dispose();
     super.dispose();
+  }
+
+  void _loadControllers() {
+    _key = TextEditingController(text: cfg.apiKey);
+    _model = TextEditingController(text: cfg.model);
+    _baseUrl = TextEditingController(text: cfg.baseUrl);
+    _extra = TextEditingController(text: cfg.extraPrompt);
   }
 
   Future<void> _apply(AiConfig next) async {
@@ -252,7 +267,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                 isDense: true,
                 helperText: '只存在本机（不参与 WebDAV 同步），当前：${maskKey(cfg.apiKey)}',
               ),
-              onChanged: (v) => cfg.apiKey == v ? null : _apply(cfg.copyWith(apiKey: v)),
+              onChanged: (v) => cfg.apiKey == v ? null : _applyDebounced(cfg.copyWith(apiKey: v)),
             ),
             const SizedBox(height: 10),
 
@@ -265,7 +280,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                 border: const OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: (v) => _apply(cfg.copyWith(model: v)),
+              onChanged: (v) => _applyDebounced(cfg.copyWith(model: v)),
             ),
             if (cfg.providerId == 'custom' || p.baseUrl.isEmpty) ...[
               const SizedBox(height: 10),
@@ -277,7 +292,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
-                onChanged: (v) => _apply(cfg.copyWith(baseUrl: v)),
+                onChanged: (v) => _applyDebounced(cfg.copyWith(baseUrl: v)),
               ),
             ],
             const SizedBox(height: 10),
@@ -291,7 +306,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: (v) => _apply(cfg.copyWith(extraPrompt: v)),
+              onChanged: (v) => _applyDebounced(cfg.copyWith(extraPrompt: v)),
             ),
             const Divider(height: 28),
 
