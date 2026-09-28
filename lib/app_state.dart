@@ -323,6 +323,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─────────────────────── 关闭行为 ───────────────────────
+
+  /// 保存「关窗口时怎么办」。[remember] 为 false 时只对这一次生效（下次还问）。
+  Future<void> setCloseAction(String action, {bool remember = true}) async {
+    device.closeAction = action == 'quit' ? 'quit' : 'tray';
+    if (remember) device.closeActionChosen = true;
+    await saveDeviceConfig();
+    notifyListeners();
+  }
+
   // ─────────────────────── 字体与字号 ───────────────────────
 
   String get fontChoice => device.fontChoice;

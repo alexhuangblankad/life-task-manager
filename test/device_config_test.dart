@@ -24,14 +24,16 @@ void main() {
     expect(cfg.vaultPath, isNotEmpty);
     expect(cfg.deviceName, isNotEmpty);
     expect(cfg.themeMode, 'system', reason: '默认跟随系统');
-    expect(cfg.runInTray, isTrue, reason: '默认关窗口缩托盘');
+    expect(cfg.closeAction, 'tray', reason: '默认关窗口缩托盘');
+    expect(cfg.closeActionChosen, isFalse, reason: '还没问过用户，第一次关窗口要弹窗问');
     expect(await File(store.path).exists(), isTrue);
   });
 
-  test('主题 / 托盘 / WebDAV / 设备名 都能存下来再读回来', () async {
+  test('主题 / 关闭行为 / WebDAV / 设备名 都能存下来再读回来', () async {
     final cfg = await store.load();
     cfg.themeMode = 'dark';
-    cfg.runInTray = false;
+    cfg.closeAction = 'quit';
+    cfg.closeActionChosen = true;
     cfg.deviceName = '书房台式机';
     cfg.webdav = const WebdavConfig(
       enabled: true,
@@ -44,7 +46,8 @@ void main() {
 
     final back = await store.load();
     expect(back.themeMode, 'dark');
-    expect(back.runInTray, isFalse);
+    expect(back.closeAction, 'quit');
+    expect(back.closeActionChosen, isTrue);
     expect(back.deviceName, '书房台式机');
     expect(back.webdav.enabled, isTrue);
     expect(back.webdav.username, 'me@example.com');
@@ -57,6 +60,23 @@ void main() {
     final cfg = await store.load();
     expect(cfg.themeMode, 'system');
     expect(cfg.vaultPath, isNotEmpty);
+  });
+
+  test('老配置（只有 run_in_tray）能平滑升级', () async {
+    // v1.0.0 的配置长这样
+    await File(store.path).writeAsString(
+      '{"version":1,"vault_path":"C:/x","device_name":"笔记本","theme_mode":"dark","run_in_tray":false}',
+    );
+    final back = await store.load();
+    expect(back.closeAction, 'quit', reason: '他当时选的是关窗口就退出');
+    expect(back.closeActionChosen, isTrue, reason: '已经明确选过，不用再问');
+  });
+
+  test('老配置里 run_in_tray 是 true 时：视为没选过，第一次关窗口问一次', () async {
+    await File(store.path).writeAsString('{"version":1,"run_in_tray":true}');
+    final back = await store.load();
+    expect(back.closeAction, 'tray');
+    expect(back.closeActionChosen, isFalse);
   });
 
   test('WebdavConfig.usable：没填地址或账号就不算可用', () {

@@ -28,6 +28,10 @@ class TrayController with tray.TrayListener, WindowListener {
   bool _quitting = false;
   DateTime _lastTipUpdate = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// 第一次关窗口时，用它通知界面弹「缩到托盘还是退出」那个选择框。
+  /// 每来一次 +1（ValueNotifier 变值才会通知监听者）。
+  final ValueNotifier<int> closePrompt = ValueNotifier<int>(0);
+
   /// 只有桌面三端需要托盘；Android 没有这回事
   bool get _supported => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
@@ -72,11 +76,24 @@ class TrayController with tray.TrayListener, WindowListener {
   @override
   void onWindowClose() async {
     if (_quitting) return;
-    if (!state.device.runInTray) {
-      await reallyQuit();
+    // 还没明确选过 → 先问一次，不擅自决定（万一人家就是想退出）
+    if (!state.device.closeActionChosen) {
+      closePrompt.value++;
       return;
     }
-    await windowManager.hide();
+    await applyCloseAction(state.device.closeAction);
+  }
+
+  /// 按用户的选择处理关闭：缩到托盘 or 真的退出
+  Future<void> applyCloseAction(String action) async {
+    if (action == 'quit') {
+      await reallyQuit();
+    } else {
+      // 测试环境里没有窗口插件，别让它把异常抛到界面上
+      try {
+        await windowManager.hide();
+      } catch (_) {}
+    }
   }
 
   @override

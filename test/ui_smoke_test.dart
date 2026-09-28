@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,6 +13,7 @@ import 'package:life_task_manager/model/profile.dart';
 import 'package:life_task_manager/model/task.dart';
 import 'package:life_task_manager/vault/repository.dart';
 import 'package:life_task_manager/ui/tasks_page.dart';
+import 'package:life_task_manager/ui/tray.dart';
 
 /// 整机冒烟：真建 vault、真写文件，然后把四个页面都渲染一遍。
 /// 布局溢出（RenderFlex overflow）在这里会直接让测试失败。
@@ -21,6 +21,7 @@ void main() {
   late Directory tmp;
   late String vaultPath;
   late AppState state;
+  late TrayController tray;
 
   setUpAll(() async {
     await initializeDateFormatting('zh_CN');
@@ -90,7 +91,8 @@ void main() {
   Future<void> pumpApp(WidgetTester tester, {double height = 1000}) async {
     // 视口给高一点，ListView 才会把下面的卡片也构建出来
     await tester.binding.setSurfaceSize(Size(1600, height));
-    await tester.pumpWidget(LifeTaskManagerApp(state: state));
+    tray = TrayController(state: state);
+    await tester.pumpWidget(LifeTaskManagerApp(state: state, tray: tray));
     // 界面里有每秒滴答的定时器，不能用 pumpAndSettle（永远等不到静止）
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 60));
@@ -187,6 +189,26 @@ void main() {
     expect(find.textContaining('任务杂记'), findsWidgets);
     expect(find.textContaining('日记'), findsWidgets);
     expect(find.textContaining('共 2 条'), findsOneWidget);
+  });
+
+  testWidgets('第一次关窗口：先问一次「缩到托盘还是退出」，勾了记住就存下来', (tester) async {
+    await pumpApp(tester);
+    expect(state.device.closeActionChosen, isFalse, reason: '还没问过用户');
+
+    tray.closePrompt.value++; // 相当于用户点了窗口右上角的关闭
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(find.text('关闭窗口时要怎么处理？'), findsOneWidget);
+    expect(find.text('缩到托盘，后台继续跑'), findsOneWidget);
+    expect(find.text('直接退出'), findsOneWidget);
+
+    await tester.tap(find.text('缩到托盘，后台继续跑'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(state.device.closeAction, 'tray');
+    expect(state.device.closeActionChosen, isTrue, reason: '默认勾了「记住我的选择」');
   });
 
   testWidgets('设置页：数据位置 / WebDAV / 关于 三块都在', (tester) async {

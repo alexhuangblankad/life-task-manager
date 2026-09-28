@@ -73,7 +73,8 @@ class DeviceConfig {
     this.webdav = const WebdavConfig(),
     this.lastSyncAt,
     this.themeMode = 'system',
-    this.runInTray = true,
+    this.closeAction = 'tray',
+    this.closeActionChosen = false,
     this.ai = const AiConfig(),
     this.fontChoice = 'noto',
     this.fontScale = 'normal',
@@ -87,8 +88,11 @@ class DeviceConfig {
   /// 外观：system / light / dark
   String themeMode;
 
-  /// 关窗口时缩到右下角托盘，而不是退出
-  bool runInTray;
+  /// 点关闭按钮时的行为：'tray'（缩到右下角继续跑）或 'quit'（退出）
+  String closeAction;
+
+  /// 用户是不是已经明确选过了。没选过 → 第一次关窗口时弹窗问一次。
+  bool closeActionChosen;
 
   /// AI 周报/月报（含 API Key，只存本机，不参与同步）
   AiConfig ai;
@@ -106,7 +110,8 @@ class DeviceConfig {
         'webdav': webdav.toJson(),
         'last_sync_at': lastSyncAt?.toIso8601String(),
         'theme_mode': themeMode,
-        'run_in_tray': runInTray,
+        'close_action': closeAction,
+        'close_action_chosen': closeActionChosen,
         'ai': ai.toJson(),
         'font_choice': fontChoice,
         'font_scale': fontScale,
@@ -118,7 +123,13 @@ class DeviceConfig {
         webdav: WebdavConfig.fromJson((j['webdav'] as Map?)?.cast<String, dynamic>() ?? const {}),
         lastSyncAt: DateTime.tryParse((j['last_sync_at'] ?? '').toString()),
         themeMode: (j['theme_mode'] ?? 'system').toString(),
-        runInTray: j['run_in_tray'] is bool ? j['run_in_tray'] as bool : true,
+        // 老配置（v1.0.0）里只有 run_in_tray：
+        //   false → 他当时就是「关窗口即退出」，视为已选过
+        //   true  → 只是默认值，没明确表达过意愿 → 留到第一次关窗口时问一次
+        closeAction: _closeActionOf(j),
+        closeActionChosen: j['close_action_chosen'] is bool
+            ? j['close_action_chosen'] as bool
+            : (j['run_in_tray'] == false),
         ai: AiConfig.fromJson((j['ai'] as Map?)?.cast<String, dynamic>() ?? const {}),
         fontChoice: (j['font_choice'] ?? 'noto').toString(),
         fontScale: (j['font_scale'] ?? 'normal').toString(),
@@ -126,6 +137,12 @@ class DeviceConfig {
 }
 
 /// 设备本地配置放在哪（Windows/macOS/Linux 各按各的规矩）
+String _closeActionOf(Map<String, dynamic> j) {
+  final v = (j['close_action'] ?? '').toString();
+  if (v == 'tray' || v == 'quit') return v;
+  return j['run_in_tray'] == false ? 'quit' : 'tray';
+}
+
 String defaultDeviceConfigPath() {
   final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
   if (Platform.isWindows) {

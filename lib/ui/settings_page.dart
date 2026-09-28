@@ -131,16 +131,31 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: s.device.runInTray,
-                onChanged: (v) async {
-                  s.device.runInTray = v;
-                  await s.saveDeviceConfig();
-                  if (mounted) setState(() {});
-                },
-                title: const Text('关窗口时缩到右下角托盘'),
-                subtitle: const Text('像微信一样常驻后台；托盘图标悬停能看到人生倒计时，右键可同步或退出'),
+              Row(
+                children: [
+                  const SizedBox(width: 72, child: Text('关窗口时')),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: s.device.closeAction,
+                      isDense: true,
+                      decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'tray', child: Text('缩到右下角托盘，后台继续跑', style: TextStyle(fontSize: 14))),
+                        DropdownMenuItem(value: 'quit', child: Text('直接退出程序', style: TextStyle(fontSize: 14))),
+                      ],
+                      onChanged: (v) async {
+                        if (v == null) return;
+                        await s.setCloseAction(v);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '缩到托盘时倒计时和提醒继续跑，点托盘图标能叫回来；右键托盘可以同步或退出。'
+                '第一次关窗口时会先问你一次，这个选择也能在这儿改。',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
               const Divider(height: 24),
               Row(
