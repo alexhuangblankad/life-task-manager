@@ -1,0 +1,433 @@
+import 'package:flutter/material.dart';
+import 'package:table_calendar/table_calendar.dart';
+
+import '../app_state.dart';
+import '../core/ids.dart';
+import '../model/event.dart';
+import '../utils/date_text.dart';
+import 'home_page.dart';
+import 'markdown_view.dart';
+import 'note_editor.dart';
+import 'theme.dart';
+
+class CalendarPage extends StatefulWidget {
+  const CalendarPage({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  State<CalendarPage> createState() => _CalendarPageState();
+}
+
+class _CalendarPageState extends State<CalendarPage> {
+  late DateTime _selected = DateTime.now();
+  late DateTime _focused = DateTime.now();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.state;
+    return PageScaffold(
+      title: '日历',
+      subtitle: '日程和待办叠在同一天上看',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () => _writeDiary(context, _selected),
+          icon: const Icon(Icons.edit_note, size: 18),
+          label: const Text('写日记'),
+        ),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          onPressed: () => _showEventDialog(context, s, _selected),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('新增日程'),
+        ),
+      ],
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              padding: Gaps.page,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Card(child: Padding(padding: const EdgeInsets.all(8), child: _buildCalendar(context, s))),
+                  const SizedBox(height: Gaps.m),
+                  const _Legend(),
+                ],
+              ),
+            ),
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(child: _DayPanel(state: s, day: _selected, onWriteDiary: () => _writeDiary(context, _selected))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendar(BuildContext context, AppState s) {
+    return TableCalendar<Object>(
+      locale: 'zh_CN',
+      firstDay: DateTime(2000, 1, 1),
+      lastDay: DateTime(2100, 12, 31),
+      focusedDay: _focused,
+      selectedDayPredicate: (d) => isSameDay(d, _selected),
+      calendarFormat: CalendarFormat.month,
+      availableCalendarFormats: const {CalendarFormat.month: '月'},
+      headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
+      eventLoader: (day) => [
+        ...s.eventsOfDay(day),
+        ...s.subtasksDueOn(day),
+        ...s.subtasksPlannedOn(day),
+      ],
+      onDaySelected: (selected, focused) {
+        setState(() {
+          _selected = selected;
+          _focused = focused;
+        });
+      },
+      onPageChanged: (focused) {
+        _focused = focused;
+        s.reloadMonth(focused);
+      },
+      calendarBuilders: CalendarBuilders<Object>(
+        markerBuilder: (context, day, events) {
+          if (events.isEmpty) return null;
+          final hasEvent = events.any((e) => e is CalendarEvent);
+          final hasTask = events.any((e) => e is! CalendarEvent);
+          final scheme = Theme.of(context).colorScheme;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (hasEvent)
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle)),
+                if (hasEvent && hasTask) const SizedBox(width: 3),
+                if (hasTask)
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: Colors.orange, shape: BoxShape.circle)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _writeDiary(BuildContext context, DateTime day) async {
+    final s = widget.state;
+    final existing = await s.diaryOf(day);
+    if (!context.mounted) return;
+    final text = await showNoteEditor(
+      context,
+      title: '${formatDateCn(day)} 的日记',
+      initialText: existing == null ? '' : '\n',
+      hint: '今天发生了什么？留一句也算。',
+    );
+    if (text == null || text.trim().isEmpty) return;
+    await s.saveDiary(day, text.trim());
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已写入 ${dateHeader(day)} 的日记')));
+    }
+  }
+
+  Future<void> _showEventDialog(BuildContext context, AppState s, DateTime day) async {
+    final title = TextEditingController();
+    var allDay = false;
+    var start = DateTime(day.year, day.month, day.day, 9);
+    var end = DateTime(day.year, day.month, day.day, 10);
+    String? taskId;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text('新增日程 · ${formatDateCn(day)}'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: title,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: '日程内容'),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: allDay,
+                    onChanged: (v) => setState(() => allDay = v),
+                    title: const Text('全天'),
+                  ),
+                  if (!allDay)
+                    Row(
+                      children: [
+                        Expanded(child: _timeField(context, setState, '开始', start, (d) => start = d)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _timeField(context, setState, '结束', end, (d) => end = d)),
+                      ],
+                    ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: taskId,
+                    decoration: const InputDecoration(labelText: '关联大任务（可选）'),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('不关联')),
+                      ...s.tasks.map((t) => DropdownMenuItem(value: t.task.id, child: Text(t.task.title))),
+                    ],
+                    onChanged: (v) => setState(() => taskId = v),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+              FilledButton(
+                onPressed: () async {
+                  final t = title.text.trim();
+                  if (t.isEmpty) return;
+                  await s.upsertEvent(CalendarEvent(
+                    id: newEventId(),
+                    title: t,
+                    start: allDay ? DateTime(day.year, day.month, day.day) : start,
+                    end: allDay ? null : end,
+                    allDay: allDay,
+                    taskId: taskId,
+                  ));
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: const Text('添加'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _timeField(BuildContext context, StateSetter setState, String label, DateTime value, void Function(DateTime) onChanged) {
+    return InkWell(
+      onTap: () async {
+        final t = await showTimePicker(
+          context: context,
+          initialTime: TimeOfDay(hour: value.hour, minute: value.minute),
+        );
+        if (t != null) {
+          setState(() => onChanged(DateTime(value.year, value.month, value.day, t.hour, t.minute)));
+        }
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(labelText: label),
+        child: Text('${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}'),
+      ),
+    );
+  }
+}
+
+class _Legend extends StatelessWidget {
+  const _Legend();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget dot(Color c) => Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle));
+    return Wrap(
+      spacing: 16,
+      children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [dot(scheme.primary), const SizedBox(width: 5), const Text('日程')]),
+        Row(mainAxisSize: MainAxisSize.min, children: [dot(Colors.orange), const SizedBox(width: 5), const Text('待办到期')]),
+      ],
+    );
+  }
+}
+
+class _DayPanel extends StatelessWidget {
+  const _DayPanel({required this.state, required this.day, required this.onWriteDiary});
+
+  final AppState state;
+  final DateTime day;
+  final VoidCallback onWriteDiary;
+
+  @override
+  Widget build(BuildContext context) {
+    final events = state.eventsOfDay(day);
+    final dueTasks = state.subtasksDueOn(day);
+    final plannedTasks = state
+        .subtasksPlannedOn(day)
+        .where((p) => !dueTasks.any((d) => d.subtask.id == p.subtask.id))
+        .toList();
+
+    return FutureBuilder(
+      future: state.diaryOf(day),
+      builder: (context, snapshot) {
+        final diary = snapshot.data;
+        return ListView(
+          padding: Gaps.page,
+          children: [
+            Text(dateHeader(day), style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: Gaps.m),
+            _Section(
+              title: '日程',
+              count: events.length,
+              empty: '这天没有日程',
+              children: [
+                for (final e in events)
+                  ListTile(
+                    dense: true,
+                    leading: Checkbox(
+                      value: e.done,
+                      onChanged: (v) => state.upsertEvent(e.copyWith(done: v ?? false)),
+                    ),
+                    title: Text(e.title, style: e.done ? const TextStyle(decoration: TextDecoration.lineThrough) : null),
+                    subtitle: Text(
+                      [
+                        e.timeLabel,
+                        if (e.taskId != null)
+                          '关联：${state.tasks.where((t) => t.task.id == e.taskId).map((t) => t.task.title).join()}',
+                        if (e.note != null) e.note!,
+                      ].join(' · '),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: '写日程杂记',
+                          icon: const Icon(Icons.sticky_note_2_outlined, size: 18),
+                          onPressed: () async {
+                            final text = await showNoteEditor(
+                              context,
+                              title: '日程杂记 · ${e.title}',
+                              initialText: e.note ?? '',
+                            );
+                            if (text != null) await state.upsertEvent(e.copyWith(note: text.trim()));
+                          },
+                        ),
+                        IconButton(
+                          tooltip: '删除',
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          onPressed: () => state.deleteEvent(e.id),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Gaps.m),
+            _Section(
+              title: '计划这天做的事',
+              count: plannedTasks.length,
+              empty: '这天没有安排要做的事（到「待办」里给小任务填「计划哪天做 ⏳」）',
+              children: [
+                for (final item in plannedTasks)
+                  CheckboxListTile(
+                    dense: true,
+                    value: item.subtask.done,
+                    onChanged: (v) => state.toggleSubtask(item.task, item.subtask.id, v ?? false),
+                    title: Text(item.subtask.title),
+                    subtitle: Text(item.task.task.title, style: Theme.of(context).textTheme.bodySmall),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Gaps.m),
+            _Section(
+              title: '到期待办',
+              count: dueTasks.length,
+              empty: '这天没有到期的待办',
+              children: [
+                for (final item in dueTasks)
+                  CheckboxListTile(
+                    dense: true,
+                    value: item.subtask.done,
+                    onChanged: (v) => state.toggleSubtask(item.task, item.subtask.id, v ?? false),
+                    title: Text(item.subtask.title),
+                    subtitle: Text(
+                      item.task.task.title,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Gaps.m),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Gaps.l),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('这天写的日记', style: Theme.of(context).textTheme.titleMedium),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: onWriteDiary,
+                          icon: const Icon(Icons.edit, size: 16),
+                          label: Text(diary == null ? '写今天的' : '追加'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (diary == null || diary.body.trim().isEmpty)
+                      Text(
+                        '还没写。日记会存到 杂记/${dateMonthFolder(day)}/日记/${isoDate(day)}.md',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      )
+                    else
+                      MarkdownView(data: diary.body),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _Section extends StatelessWidget {
+  const _Section({required this.title, required this.count, required this.empty, required this.children});
+
+  final String title;
+  final int count;
+  final String empty;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Gaps.l, Gaps.m, Gaps.s, Gaps.m),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(width: 6),
+                  if (count > 0)
+                    Chip(
+                      label: Text('$count'),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                ],
+              ),
+            ),
+            if (children.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(empty, style: Theme.of(context).textTheme.bodySmall),
+              )
+            else
+              ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
