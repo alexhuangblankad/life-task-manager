@@ -2,6 +2,7 @@
 library;
 
 import '../core/ids.dart';
+import 'reminder_rule.dart';
 import 'task.dart' show formatDate;
 
 class CalendarEvent {
@@ -15,6 +16,7 @@ class CalendarEvent {
     this.taskId,
     this.note,
     this.colorIndex = 0,
+    this.reminder,
   });
 
   final String id;
@@ -34,7 +36,13 @@ class CalendarEvent {
   final String? note;
   final int colorIndex;
 
+  /// 日程自己的提醒（提前 N 分钟 / 开始时）
+  final RemindRule? reminder;
+
   DateTime get effectiveEnd => end ?? start;
+
+  /// 提醒应该在什么时候弹
+  DateTime? get remindAt => reminder?.fireFrom(start);
 
   bool onDay(DateTime day) {
     final d = DateTime(day.year, day.month, day.day);
@@ -54,6 +62,8 @@ class CalendarEvent {
     bool clearTaskId = false,
     String? note,
     int? colorIndex,
+    RemindRule? reminder,
+    bool clearReminder = false,
   }) =>
       CalendarEvent(
         id: id,
@@ -65,6 +75,7 @@ class CalendarEvent {
         taskId: clearTaskId ? null : (taskId ?? this.taskId),
         note: note ?? this.note,
         colorIndex: colorIndex ?? this.colorIndex,
+        reminder: clearReminder ? null : (reminder ?? this.reminder),
       );
 
   Map<String, dynamic> toJson() => {
@@ -77,6 +88,7 @@ class CalendarEvent {
         if (taskId != null) 'task': taskId,
         if (note != null) 'note': note,
         'color': colorIndex,
+        if (reminder != null) 'remind': reminder!.toJson(),
       };
 
   static CalendarEvent fromJson(Map<String, dynamic> json) => CalendarEvent(
@@ -89,6 +101,9 @@ class CalendarEvent {
         taskId: _nullable(json['task']),
         note: _nullable(json['note']),
         colorIndex: int.tryParse((json['color'] ?? '0').toString()) ?? 0,
+        reminder: json['remind'] is Map
+            ? RemindRule.fromJson(Map<String, dynamic>.from(json['remind'] as Map))
+            : null,
       );
 
   /// 给人看的日期范围文案

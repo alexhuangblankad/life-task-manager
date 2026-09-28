@@ -71,8 +71,9 @@ class TrayController with tray.TrayListener, WindowListener {
 
   @override
   void onWindowClose() async {
-    if (_quitting || !state.device.runInTray) {
-      await _reallyQuit();
+    if (_quitting) return;
+    if (!state.device.runInTray) {
+      await reallyQuit();
       return;
     }
     await windowManager.hide();
@@ -93,15 +94,23 @@ class TrayController with tray.TrayListener, WindowListener {
         await state.syncNow();
         await tray.trayManager.setToolTip(state.trayTooltip);
       case 'quit':
-        await _reallyQuit();
+        await reallyQuit();
     }
   }
 
-  Future<void> _reallyQuit() async {
+  /// 真正退出。
+  ///
+  /// 坑：不要在这个流程里 await `windowManager.destroy()` —— 它会跟 Flutter 的
+  /// 消息循环互相等，表现成「点了退出，窗口半天不动」。
+  /// 正确做法：把托盘图标收掉，然后直接让进程走人。
+  Future<void> reallyQuit() async {
+    if (_quitting) return;
     _quitting = true;
     state.tick.removeListener(_onTick);
-    await tray.trayManager.destroy();
-    await windowManager.destroy();
+    try {
+      await tray.trayManager.destroy();
+    } catch (_) {}
+    _installed = false;
     exit(0);
   }
 

@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../app_state.dart';
+import '../core/chinese_calendar.dart';
+import '../core/history_today.dart';
 import '../core/ids.dart';
 import '../model/event.dart';
+import '../model/reminder_rule.dart';
 import '../utils/date_text.dart';
 import 'home_page.dart';
 import 'markdown_view.dart';
 import 'note_editor.dart';
+import 'remind_picker.dart';
 import 'theme.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -92,6 +96,8 @@ class _CalendarPageState extends State<CalendarPage> {
         s.reloadMonth(focused);
       },
       calendarBuilders: CalendarBuilders<Object>(
+        // 格子里除了日期，再塞一行农历/节日/节气的小字（可在设置里关掉）
+        defaultBuilder: (context, day, focusedDay) => _dayCell(context, day, s),
         markerBuilder: (context, day, events) {
           if (events.isEmpty) return null;
           final hasEvent = events.any((e) => e is CalendarEvent);
@@ -111,6 +117,72 @@ class _CalendarPageState extends State<CalendarPage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// 日历格：日期数字 + 农历/节日小字 + 休/班标记
+  Widget _dayCell(BuildContext context, DateTime day, AppState s) {
+    final scheme = Theme.of(context).colorScheme;
+    final prefs = s.calendarPrefs;
+    final isSelected = isSameDay(day, _selected);
+    final isToday = isSameDay(day, DateTime.now());
+    final outside = day.month != _focused.month;
+
+    String? sub;
+    Color subColor = scheme.onSurfaceVariant;
+    if (prefs.showLunar || prefs.showHoliday) {
+      final cn = ChineseDay.of(day);
+      if (prefs.showLunar && cn.isFestival) {
+        sub = cn.festivals.first;
+        subColor = scheme.primary;
+      } else if (prefs.showHoliday && cn.isStatutoryRest) {
+        sub = '休';
+        subColor = const Color(0xFFD32F2F);
+      } else if (prefs.showHoliday && cn.isAdjustedWorkday) {
+        sub = '班';
+        subColor = scheme.onSurfaceVariant;
+      } else if (prefs.showLunar && cn.jieQi.isNotEmpty) {
+        sub = cn.jieQi;
+        subColor = const Color(0xFF2E7D32);
+      } else if (prefs.showLunar) {
+        sub = cn.lunarShort;
+      }
+    }
+
+    final fg = isSelected
+        ? scheme.onPrimary
+        : (isToday ? scheme.primary : (outside ? scheme.outline : scheme.onSurface));
+
+    return Container(
+      margin: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: isSelected ? scheme.primary : null,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '${day.day}',
+            style: TextStyle(
+              color: fg,
+              fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w400,
+              fontSize: 13,
+            ),
+          ),
+          if (sub != null)
+            Text(
+              sub,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                fontSize: 9,
+                height: 1.1,
+                color: isSelected ? scheme.onPrimary : subColor,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -138,6 +210,7 @@ class _CalendarPageState extends State<CalendarPage> {
     var start = DateTime(day.year, day.month, day.day, 9);
     var end = DateTime(day.year, day.month, day.day, 10);
     String? taskId;
+    RemindRule? reminder;
 
     await showDialog<void>(
       context: context,
@@ -180,6 +253,12 @@ class _CalendarPageState extends State<CalendarPage> {
                     ],
                     onChanged: (v) => setState(() => taskId = v),
                   ),
+                  const SizedBox(height: 12),
+                  EventRemindPicker(
+                    initial: reminder,
+                    onChanged: (v) => setState(() => reminder = v),
+                    start: allDay ? null : start,
+                  ),
                 ],
               ),
             ),
@@ -196,6 +275,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     end: allDay ? null : end,
                     allDay: allDay,
                     taskId: taskId,
+                    reminder: reminder,
                   ));
                   if (context.mounted) Navigator.pop(context);
                 },
@@ -222,6 +302,39 @@ class _CalendarPageState extends State<CalendarPage> {
       child: InputDecorator(
         decoration: InputDecoration(labelText: label),
         child: Text('${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}'),
+      ),
+    );
+  }
+}
+
+class _GreetingBanner extends StatelessWidget {
+  const _GreetingBanner({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [scheme.primaryContainer, scheme.tertiaryContainer],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Text('🎉', style: TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: scheme.onPrimaryContainer, height: 1.4),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -264,11 +377,63 @@ class _DayPanel extends StatelessWidget {
       future: state.diaryOf(day),
       builder: (context, snapshot) {
         final diary = snapshot.data;
+        final cn = ChineseDay.of(day);
+        final prefs = state.calendarPrefs;
+        final greeting = cn.greeting;
+        final repeats = state.repeatsOn(day);
+        final history = prefs.showHistory
+            ? (state.history?.of(day) ?? const <HistoryEvent>[])
+            : const <HistoryEvent>[];
+
         return ListView(
           padding: Gaps.page,
           children: [
             Text(dateHeader(day), style: Theme.of(context).textTheme.titleLarge),
+            if (prefs.showLunar || prefs.showHoliday)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  cn.detailLine,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+            if (prefs.showYiJi)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '宜：${cn.yi.take(4).join('、')}　忌：${cn.ji.take(4).join('、')}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            if (prefs.showGreeting && greeting != null) ...[
+              const SizedBox(height: Gaps.m),
+              _GreetingBanner(text: greeting),
+            ],
             const SizedBox(height: Gaps.m),
+            if (repeats.isNotEmpty) ...[
+              _Section(
+                title: '今天该做的（定时任务）',
+                count: repeats.length,
+                empty: '',
+                children: [
+                  for (final item in repeats)
+                    CheckboxListTile(
+                      dense: true,
+                      value: state.isRepeatDoneOn(item.subtask.id, day),
+                      onChanged: (_) => state.toggleRepeatDone(item.subtask.id, day),
+                      title: Text(item.subtask.title),
+                      subtitle: Text(
+                        '${item.task.task.title} · ${item.subtask.repeat!.label}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      secondary: Icon(Icons.repeat, size: 18, color: Theme.of(context).colorScheme.primary),
+                    ),
+                ],
+              ),
+              const SizedBox(height: Gaps.m),
+            ],
             _Section(
               title: '日程',
               count: events.length,
@@ -285,6 +450,7 @@ class _DayPanel extends StatelessWidget {
                     subtitle: Text(
                       [
                         e.timeLabel,
+                        if (e.reminder != null) '🔔 ${e.reminder!.label}',
                         if (e.taskId != null)
                           '关联：${state.tasks.where((t) => t.task.id == e.taskId).map((t) => t.task.title).join()}',
                         if (e.note != null) e.note!,
@@ -380,6 +546,85 @@ class _DayPanel extends StatelessWidget {
                 ),
               ),
             ),
+            if (prefs.showHistory) ...[
+              const SizedBox(height: Gaps.m),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Gaps.l),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_stories_outlined, size: 18),
+                          const SizedBox(width: 6),
+                          Text('历史上的今天', style: Theme.of(context).textTheme.titleMedium),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (history.isEmpty)
+                        Text(
+                          '这天没有收录的事件',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        )
+                      else
+                        for (final e in history)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 52,
+                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    e.year,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(e.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      if (e.desc.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 2),
+                                          child: Text(
+                                            e.desc,
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      if (history.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            '数据来源：${state.history?.source ?? ""}（已打包在本地，不联网）',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.outline,
+                                  fontSize: 11,
+                                ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         );
       },

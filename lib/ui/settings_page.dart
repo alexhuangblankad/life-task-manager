@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../core/device_config.dart';
+import '../model/profile.dart';
 import '../utils/date_text.dart';
 import 'home_page.dart';
 import 'profile_dialog.dart';
@@ -139,6 +140,31 @@ class _SettingsPageState extends State<SettingsPage> {
                 },
                 title: const Text('关窗口时缩到右下角托盘'),
                 subtitle: const Text('像微信一样常驻后台；托盘图标悬停能看到人生倒计时，右键可同步或退出'),
+              ),
+            ],
+          ),
+          const SizedBox(height: Gaps.l),
+
+          // ── 日历小趣味 ──
+          _Card(
+            title: '日历小趣味（不想看就都关掉）',
+            children: [
+              _prefSwitch(s, '农历与节气', '日历格子里那行小字：农历日 / 节气 / 节日名',
+                  s.calendarPrefs.showLunar, (v) => s.calendarPrefs.copyWith(showLunar: v)),
+              _prefSwitch(s, '法定节假日', '放假标「休」、调休上班标「班」',
+                  s.calendarPrefs.showHoliday, (v) => s.calendarPrefs.copyWith(showHoliday: v)),
+              _prefSwitch(s, '节日祝福', '过节那天在日历里写一句',
+                  s.calendarPrefs.showGreeting, (v) => s.calendarPrefs.copyWith(showGreeting: v)),
+              _prefSwitch(s, '历史上的今天', '每天几条真实事件（数据打包在本地，不联网）',
+                  s.calendarPrefs.showHistory, (v) => s.calendarPrefs.copyWith(showHistory: v)),
+              _prefSwitch(s, '宜忌', '黄历那套，默认关',
+                  s.calendarPrefs.showYiJi, (v) => s.calendarPrefs.copyWith(showYiJi: v)),
+              const Divider(height: 24),
+              _prefSwitch(s, '到期当天弹桌面提醒', '今天到期 / 今天该做的定时任务，弹一次系统通知',
+                  s.calendarPrefs.remindOnTaskDay, (v) => s.calendarPrefs.copyWith(remindOnTaskDay: v)),
+              Text(
+                '注：法定节假日的数据是随包里带的年度表，目前覆盖到 2026 年；之后要等农历库更新（界面不会瞎猜，没有就不显示）。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -404,6 +430,27 @@ class _SettingsPageState extends State<SettingsPage> {
       remoteRoot: _root.text.trim().isEmpty ? '/LifeTaskManager' : _root.text.trim(),
     );
     await s.saveDeviceConfig();
+  }
+
+  /// 日历小趣味开关：勾一下立刻存进 vault（跟着同步走）
+  Widget _prefSwitch(
+    AppState st,
+    String title,
+    String subtitle,
+    bool value,
+    CalendarPrefs Function(bool) build,
+  ) {
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      value: value,
+      onChanged: (v) async {
+        await st.saveCalendarPrefs(build(v));
+        if (mounted) setState(() {});
+      },
+      title: Text(title),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+    );
   }
 
   Future<void> _openFolder(String path) async {

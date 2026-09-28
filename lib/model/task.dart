@@ -30,6 +30,8 @@ import 'package:crypto/crypto.dart';
 
 import '../core/front_matter.dart';
 import '../core/ids.dart';
+import 'reminder_rule.dart';
+import 'repeat.dart';
 
 /// 优先级
 class Priority {
@@ -49,6 +51,8 @@ class SubTask {
     this.done = false,
     this.due,
     this.scheduled,
+    this.repeat,
+    this.reminder,
     this.doneAt,
     this.priority = Priority.none,
     this.tags = const [],
@@ -63,6 +67,12 @@ class SubTask {
 
   /// 计划哪天做 ⏳（想做/打算那天做的事，不一定有截止日期）
   final DateTime? scheduled;
+
+  /// 定时/重复规则 🔁（每月15日、每月农历十五、每周一…）
+  final RepeatRule? repeat;
+
+  /// 这条任务自己的提醒规则 🔔（到期当天 / 提前N天 / 指定时间）
+  final RemindRule? reminder;
 
   final DateTime? doneAt;
   final int priority;
@@ -80,6 +90,11 @@ class SubTask {
   bool isDueOn(DateTime day) =>
       due != null && due!.year == day.year && due!.month == day.month && due!.day == day.day;
 
+  /// 这一天是否该做这件重复任务
+  bool repeatsOn(DateTime day) => repeat?.occursOn(day) ?? false;
+
+  bool get isRepeating => repeat != null;
+
   SubTask copyWith({
     String? title,
     bool? done,
@@ -87,6 +102,10 @@ class SubTask {
     bool clearDue = false,
     DateTime? scheduled,
     bool clearScheduled = false,
+    RepeatRule? repeat,
+    bool clearRepeat = false,
+    RemindRule? reminder,
+    bool clearReminder = false,
     DateTime? doneAt,
     bool clearDoneAt = false,
     int? priority,
@@ -98,6 +117,8 @@ class SubTask {
         done: done ?? this.done,
         due: clearDue ? null : (due ?? this.due),
         scheduled: clearScheduled ? null : (scheduled ?? this.scheduled),
+        repeat: clearRepeat ? null : (repeat ?? this.repeat),
+        reminder: clearReminder ? null : (reminder ?? this.reminder),
         doneAt: clearDoneAt ? null : (doneAt ?? this.doneAt),
         priority: priority ?? this.priority,
         tags: tags ?? this.tags,
@@ -161,6 +182,8 @@ final RegExp _checkboxLine = RegExp(r'^(\s*)- \[([ xX])\]\s+(.*)$');
 final RegExp _dueMark = RegExp('📅\\s*(\\d{4}-\\d{2}-\\d{2})');
 final RegExp _scheduledMark = RegExp('⏳\\s*(\\d{4}-\\d{2}-\\d{2})');
 final RegExp _doneMark = RegExp('✅\\s*(\\d{4}-\\d{2}-\\d{2})');
+final RegExp _repeatMark = RegExp('🔁\\s*([^⏳📅⏫🔼🔽✅🔔#^]+)');
+final RegExp _remindMark = RegExp('🔔\\s*([^⏳📅⏫🔼🔽✅🔁#^]+)');
 final RegExp _idMark = RegExp(r'\s+\^([A-Za-z0-9_-]{2,})\s*$');
 final RegExp _tagMark = RegExp(r'(?:^|\s)#([^\s#]+)');
 
@@ -240,6 +263,20 @@ SubTask? parseSubtaskLine(String line) {
     rest = (rest.substring(0, schedMatch.start) + rest.substring(schedMatch.end)).trim();
   }
 
+  RepeatRule? repeat;
+  final repeatMatch = _repeatMark.firstMatch(rest);
+  if (repeatMatch != null) {
+    repeat = RepeatRule.parse(repeatMatch.group(1)!);
+    rest = (rest.substring(0, repeatMatch.start) + rest.substring(repeatMatch.end)).trim();
+  }
+
+  RemindRule? reminder;
+  final remindMatch = _remindMark.firstMatch(rest);
+  if (remindMatch != null) {
+    reminder = RemindRule.parse(remindMatch.group(1)!);
+    rest = (rest.substring(0, remindMatch.start) + rest.substring(remindMatch.end)).trim();
+  }
+
   DateTime? doneAt;
   final doneMatch = _doneMark.firstMatch(rest);
   if (doneMatch != null) {
@@ -267,6 +304,8 @@ SubTask? parseSubtaskLine(String line) {
     done: m.group(2)!.toLowerCase() == 'x',
     due: due,
     scheduled: scheduled,
+    repeat: repeat,
+    reminder: reminder,
     doneAt: doneAt,
     priority: priority,
     tags: tags,
@@ -275,11 +314,13 @@ SubTask? parseSubtaskLine(String line) {
 
 // ────────────────────────────── 渲染 ──────────────────────────────
 
-/// 渲染一行小任务（顺序：标题 ⏳计划 📅截止 优先级 ✅完成 #标签 ^id）
+/// 渲染一行小任务（顺序：标题 🔁重复 ⏳计划 📅截止 🔔提醒 优先级 ✅完成 #标签 ^id）
 String renderSubtaskLine(SubTask st, {String indent = ''}) {
   final buf = StringBuffer('$indent- [${st.done ? 'x' : ' '}] ${st.title}');
+  if (st.repeat != null) buf.write(' ${st.repeat!.toMarkdown()}');
   if (st.scheduled != null) buf.write(' ⏳ ${formatDate(st.scheduled!)}');
   if (st.due != null) buf.write(' 📅 ${formatDate(st.due!)}');
+  if (st.reminder != null) buf.write(' ${st.reminder!.toMarkdown()}');
   final mark = Priority.marks[st.priority];
   if (mark != null) buf.write(' $mark');
   if (st.done && st.doneAt != null) buf.write(' ✅ ${formatDate(st.doneAt!)}');

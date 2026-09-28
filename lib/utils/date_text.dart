@@ -18,6 +18,14 @@ String dateHeader(DateTime d) =>
 /// 9月28日
 String shortDate(DateTime d) => '${d.month} 月 ${d.day} 日';
 
+String _two(int n) => n.toString().padLeft(2, '0');
+
+/// 2026-09-28 14:30
+String formatDateTime(DateTime d) => '${isoDate(d)} ${_two(d.hour)}:${_two(d.minute)}';
+
+/// 14:30
+String formatTime(DateTime d) => '${_two(d.hour)}:${_two(d.minute)}';
+
 /// 刚刚 / 3 分钟前 / 昨天 14:30 / 2026-09-28 14:30
 String relativeTime(DateTime t, {DateTime? now}) {
   final n = now ?? DateTime.now();

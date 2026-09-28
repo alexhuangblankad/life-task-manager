@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/foundation.dart';
@@ -9,7 +10,9 @@ import 'package:flutter/foundation.dart';
 import 'core/countdown.dart';
 import 'core/device_config.dart';
 import 'core/front_matter.dart';
+import 'core/history_today.dart';
 import 'core/ids.dart';
+import 'core/reminder.dart';
 import 'model/event.dart';
 import 'model/note.dart';
 import 'model/profile.dart';
@@ -68,7 +71,210 @@ class AppState extends ChangeNotifier {
   Future<void> _loadAll() async {
     profile = await repo.loadProfile();
     tasks = await repo.loadTasks();
+    await _loadRepeatDone();
     await reloadMonth(month, notify: false);
+  }
+
+  // ─────────────────────── 重复任务（定时任务）───────────────────────
+
+  /// {小任务ID: {做过的日期}}
+  Map<String, Set<String>> repeatDone = {};
+
+  static String dateKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _loadRepeatDone() async {
+    repeatDone = {};
+    try {
+      final raw = await repo.readFileOrNull(VaultLayout.repeatDonePath);
+      if (raw == null) return;
+      final json = jsonDecode(raw);
+      if (json is Map) {
+        json.forEach((k, v) {
+          if (v is List) repeatDone[k.toString()] = v.map((e) => e.toString()).toSet();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveRepeatDone() async {
+    final sorted = repeatDone.map((k, v) => MapEntry(k, (v.toList()..sort())));
+    await repo.writeFile(
+      VaultLayout.repeatDonePath,
+      const JsonEncoder.withIndent(' ').convert(sorted),
+    );
+  }
+
+  /// 这个重复任务在这一天是不是已经做过了
+  bool isRepeatDoneOn(String subtaskId, DateTime day) =>
+      repeatDone[subtaskId]?.contains(dateKey(day)) ?? false;
+
+  /// 重复任务：切换「这一天做过」（和普通任务的完成标记分开记）
+  Future<void> toggleRepeatDone(String subtaskId, DateTime day) async {
+    final set = repeatDone.putIfAbsent(subtaskId, () => <String>{});
+    final key = dateKey(day);
+    if (!set.remove(key)) set.add(key);
+    await _saveRepeatDone();
+    notifyListeners();
+  }
+
+  /// 这一天该做的重复任务
+  List<({TaskFile task, SubTask subtask})> repeatsOn(DateTime day) {
+    final out = <({TaskFile task, SubTask subtask})>[];
+    for (final tf in tasks) {
+      for (final st in tf.task.subtasks) {
+        if (st.isRepeating && st.repeatsOn(day)) out.add((task: tf, subtask: st));
+      }
+    }
+    return out;
+  }
+
+  /// 所有重复任务（按下次发生时间排序），放在待办页/倒计时页用
+  List<({TaskFile task, SubTask subtask, DateTime next, int daysLeft})> get upcomingRepeats {
+    final now = DateTime.now();
+    final out = <({TaskFile task, SubTask subtask, DateTime next, int daysLeft})>[];
+    for (final tf in tasks) {
+      for (final st in tf.task.subtasks) {
+        if (!st.isRepeating) continue;
+        final next = st.repeat!.nextOccurrence(now);
+        if (next == null) continue;
+        out.add((task: tf, subtask: st, next: next, daysLeft: st.repeat!.daysUntilNext(now) ?? 0));
+      }
+    }
+    out.sort((a, b) => a.next.compareTo(b.next));
+    return out;
+  }
+
+  // ─────────────────────── 历史上的今天 ───────────────────────
+
+  HistoryToday? history;
+
+  /// 首次用到时才解析那份 520KB 的数据
+  Future<void> ensureHistory() async {
+    if (history != null) return;
+    try {
+      history = await HistoryToday.load();
+      notifyListeners();
+    } catch (_) {
+      // 数据坏了也不能让日历打不开
+    }
+  }
+
+  CalendarPrefs get calendarPrefs => profile.calendar;
+
+  Future<void> saveCalendarPrefs(CalendarPrefs prefs) =>
+      saveProfile(profile.copyWith(calendar: prefs));
+
+  // ─────────────────────── 提醒 ───────────────────────
+
+  ReminderService? _reminder;
+  String? _localDir;
+
+  Future<void> startReminders(String localDir) async {
+    _localDir = localDir;
+    _reminder ??= ReminderService(
+      collect: reminderItems,
+      storePath: '$localDir/notified.json',
+    );
+    await _reminder!.start();
+  }
+
+  /// 今天要提醒几条（铃铛上的小红点用）
+  int get todayReminderCount => reminderItems().length;
+
+  /// 立刻检查并弹一次系统通知（铃铛面板里手动触发，方便验证通知有没有生效）
+  Future<int> notifyNow() async {
+    if (_reminder == null) {
+      final dir = _localDir;
+      if (dir == null) return 0;
+      await startReminders(dir);
+    }
+    return _reminder!.check();
+  }
+
+  /// 今天/此刻要提醒的事。
+  ///
+  /// key 里带上「这一次」的标识（日期或时刻），同一次只弹一回。
+  /// - 任务自己的提醒 🔔（到期当天 / 提前N天 / 指定时间）→ 到点必弹，不看总开关
+  /// - 到期待办、今天该做的定时任务、今天计划做的 → 受「任务提醒」总开关控制
+  /// - 日程自己的提醒 🔔（提前N分钟 / 开始时）
+  List<ReminderItem> reminderItems() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final out = <ReminderItem>[];
+    final auto = profile.calendar.remindOnTaskDay;
+
+    for (final tf in tasks) {
+      for (final st in tf.task.subtasks) {
+        if (st.done) continue;
+
+        // 1) 任务自己设的提醒：到点就弹
+        final rule = st.reminder;
+        final fire = rule?.fireAt(st.due);
+        if (rule != null && fire != null && _due(fire, now)) {
+          out.add(ReminderItem(
+            key: 'rem-${st.id}-${fire.toIso8601String()}',
+            title: '提醒：${st.title}',
+            body: [
+              tf.task.title,
+              rule.label,
+              if (st.due != null) '到期 ${formatDate(st.due!)}',
+            ].join(' · '),
+          ));
+        }
+
+        if (!auto) continue;
+
+        // 2) 到期的
+        if (st.due != null && !st.isRepeating) {
+          final left = calendarDaysBetween(today, st.due!);
+          if (left <= 0) {
+            out.add(ReminderItem(
+              key: 'due-${st.id}-${formatDate(st.due!)}',
+              title: left == 0 ? '今天到期：${st.title}' : '逾期 ${-left} 天：${st.title}',
+              body: tf.task.title,
+            ));
+          }
+        }
+
+        // 3) 今天该做的定时任务（每月15日 / 每月农历十五 …）
+        if (st.isRepeating && st.repeatsOn(today) && !isRepeatDoneOn(st.id, today)) {
+          out.add(ReminderItem(
+            key: 'rep-${st.id}-${formatDate(today)}',
+            title: '今天要做：${st.title}',
+            body: '${tf.task.title} · ${st.repeat!.label}',
+          ));
+        }
+
+        // 4) 今天计划做的
+        if (!st.isRepeating && st.isPlannedOn(today)) {
+          out.add(ReminderItem(
+            key: 'plan-${st.id}-${formatDate(today)}',
+            title: '今天打算做：${st.title}',
+            body: tf.task.title,
+          ));
+        }
+      }
+    }
+
+    // 日程自己设的提醒
+    for (final e in events) {
+      final at = e.remindAt;
+      if (e.done || at == null || !_due(at, now)) continue;
+      out.add(ReminderItem(
+        key: 'evt-${e.id}-${e.start.toIso8601String()}',
+        title: '日程：${e.title}',
+        body: '${formatDate(e.start)} ${e.timeLabel} · ${e.reminder!.label}',
+      ));
+    }
+
+    return out;
+  }
+
+  /// 提醒到点了没（顺带补提醒：最多补最近 7 天错过的，别让关机期间的事消失）
+  static bool _due(DateTime fire, DateTime now) {
+    if (fire.isAfter(now)) return false;
+    return now.difference(fire).inDays <= 7;
   }
 
   Future<void> reloadAll() async {
@@ -260,7 +466,7 @@ class AppState extends ChangeNotifier {
     return out;
   }
 
-  /// 今天要做的事（计划日期是今天，或截止日期是今天/已逾期）
+  /// 今天要做的事（计划日期是今天、截止日期是今天/已逾期、或今天该做的重复任务）
   List<({TaskFile task, SubTask subtask})> get todayFocus {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -268,6 +474,10 @@ class AppState extends ChangeNotifier {
     final seen = <String>{};
     for (final tf in tasks) {
       for (final st in tf.task.subtasks) {
+        if (st.isRepeating) {
+          if (st.repeatsOn(today) && seen.add(st.id)) out.add((task: tf, subtask: st));
+          continue;
+        }
         if (st.done) continue;
         final planned = st.isPlannedOn(today);
         final due = st.due != null && !st.due!.isAfter(today);

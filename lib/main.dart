@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'app_state.dart';
+import 'core/device_config.dart';
 import 'ui/home_page.dart';
 import 'ui/theme.dart';
 import 'ui/tray.dart';
@@ -17,9 +20,14 @@ Future<void> main() async {
   final tray = TrayController(state: state);
   runApp(LifeTaskManagerApp(state: state));
 
-  // 等第一帧渲染完再装托盘/调窗口，避免启动卡住
+  // 等第一帧渲染完再干这些重活，别卡启动
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await tray.setup();
+    // 提醒记录放本机（不进 vault，免得同步来同步去）
+    final localDir = File(defaultDeviceConfigPath()).parent.path;
+    await state.startReminders(localDir);
+    // 520KB 的历史数据延后解析，不挡启动
+    await state.ensureHistory();
   });
 }
 

@@ -4,6 +4,7 @@ import '../app_state.dart';
 import 'calendar_page.dart';
 import 'countdown_page.dart';
 import 'notes_page.dart';
+import 'reminder_panel.dart';
 import 'settings_page.dart';
 import 'tasks_page.dart';
 import 'theme.dart';
@@ -55,12 +56,27 @@ class _HomePageState extends State<HomePage> {
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: IconButton(
-                      tooltip: '立即同步',
-                      onPressed: s.busy ? null : () => s.syncNow(),
-                      icon: s.busy
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.cloud_sync_outlined),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 小铃铛：今天要提醒的事（倒计时 / 到期待办 / 定时任务）
+                        Badge(
+                          isLabelVisible: s.todayReminderCount > 0,
+                          label: Text('${s.todayReminderCount}'),
+                          child: IconButton(
+                            tooltip: '提醒',
+                            onPressed: () => showReminderPanel(context, s),
+                            icon: const Icon(Icons.notifications_outlined),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '立即同步',
+                          onPressed: s.busy ? null : () => s.syncNow(),
+                          icon: s.busy
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.cloud_sync_outlined),
+                        ),
+                      ],
                     ),
                   ),
                 ),

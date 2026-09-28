@@ -44,6 +44,8 @@ dependencies:
     sdk: flutter
   tray_manager: ^0.7.0
   window_manager: ^0.5.2
+  lunar: ^1.7.8
+  local_notifier: ^0.1.6
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +69,7 @@ flutter:
   assets:
     - assets/donate_qr.png
     - assets/tray.ico
+    - assets/history_today.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

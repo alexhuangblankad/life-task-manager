@@ -19,6 +19,9 @@ class VaultLayout {
 
   static const String profilePath = '$configDir/profile.json';
 
+  /// 重复任务的「哪天做过」记录（按月记日期，用于日历上打勾）
+  static const String repeatDonePath = '$configDir/repeat_done.json';
+
   /// 2026 年 9 月 → `202609`
   static String monthFolder(DateTime d) => '${d.year}${two(d.month)}';
 

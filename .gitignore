@@ -31,6 +31,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+
+# 发布版产物（用 tool/build_release.ps1 生成，不进仓库）
+/dist/
 /coverage/
 
 # Symbolication related
