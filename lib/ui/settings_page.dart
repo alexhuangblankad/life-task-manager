@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../core/app_info.dart';
 import '../core/device_config.dart';
 import '../model/profile.dart';
 import '../utils/date_text.dart';
@@ -441,20 +442,109 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: Gaps.l),
 
-          // ── 说明 ──
+          const SizedBox(height: Gaps.l),
+
+          // ── 导航栏顺序 ──
+          _Card(
+            title: '导航栏顺序（按自己的习惯排）',
+            children: [
+              Text(
+                '把最常用的放最前面。比如你主要用日历，就把「日历」挪到第一位，'
+                '倒计时放最后也行 —— 四个功能谁主谁次，你说了算。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              for (var i = 0; i < _navOrderOf(s).length; i++)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: Icon(_navIcons[_navOrderOf(s)[i]] ?? Icons.circle_outlined),
+                  title: Text(_navLabels[_navOrderOf(s)[i]] ?? _navOrderOf(s)[i]),
+                  subtitle: i == 0 ? const Text('第一个（打开就显示这页）') : null,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: '上移',
+                        icon: const Icon(Icons.keyboard_arrow_up),
+                        onPressed: i == 0 ? null : () => _moveNav(s, i, -1),
+                      ),
+                      IconButton(
+                        tooltip: '下移',
+                        icon: const Icon(Icons.keyboard_arrow_down),
+                        onPressed: i == _navOrderOf(s).length - 1 ? null : () => _moveNav(s, i, 1),
+                      ),
+                    ],
+                  ),
+                ),
+              if (s.navOrder.isNotEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      await s.setNavOrder(const []);
+                      if (mounted) setState(() {});
+                    },
+                    icon: const Icon(Icons.restart_alt, size: 18),
+                    label: const Text('恢复默认顺序'),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: Gaps.l),
+          // ── 关于 ──
           _Card(
             title: '关于',
             children: [
-              const Text('人生任务管理器 · 0.1.0（Windows 首个版本）'),
-              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset('assets/app_icon.png', width: 56, height: 56),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('$kAppName $kAppVersion',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 2),
+                        Text(kAppTagline,
+                            style: Theme.of(context).textTheme.bodySmall),
+                        const SizedBox(height: 2),
+                        SelectableText(
+                          kAppRepoUrl,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.primary,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
               Text(
-                '文件结构：\n'
-                '大任务/        一个大任务一个 .md 文件\n'
-                '日程/          按月一个 JSON\n'
-                '杂记/202609/   日记/ 和 任务/ 两个子目录\n'
-                '月报/          月度总结与评分（待做）\n'
-                '回收站/        删掉的东西留 30 天',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'Consolas'),
+                '你的数据长这样（全是纯文本，Obsidian 也能直接读）：',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'config/profile.json   人生期限、日历开关\n'
+                '大任务/                一个大任务一个 .md\n'
+                '日程/202609.json       按月存，可设每天/每周/农历每月重复\n'
+                '杂记/202609/           日记/ 和 任务/ 两个子目录\n'
+                '报告/                  周报、月报、季报（AI 评分）\n'
+                '回收站/                删掉的东西放这儿',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'Consolas', height: 1.6),
+              ),
+              const Divider(height: 24),
+              Text(
+                '许可：MIT（随便用、随便改、随便分发，保留版权声明即可）\n'
+                '数据默认在「文档\\LifeTaskManager」，和程序目录分开 —— 卸载软件不会删数据',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, height: 1.6),
               ),
             ],
           ),
@@ -496,6 +586,39 @@ class _SettingsPageState extends State<SettingsPage> {
       remoteRoot: _root.text.trim().isEmpty ? '/LifeTaskManager' : _root.text.trim(),
     );
     await s.saveDeviceConfig();
+  }
+
+
+  static const _navLabels = <String, String>{
+    'countdown': '倒计时',
+    'calendar': '日历',
+    'tasks': '待办',
+    'notes': '杂记',
+    'settings': '设置',
+  };
+
+  static const _navIcons = <String, IconData>{
+    'countdown': Icons.hourglass_bottom_outlined,
+    'calendar': Icons.calendar_month_outlined,
+    'tasks': Icons.checklist_outlined,
+    'notes': Icons.edit_note_outlined,
+    'settings': Icons.settings_outlined,
+  };
+
+  static const _navDefault = ['countdown', 'calendar', 'tasks', 'notes', 'settings'];
+
+  List<String> _navOrderOf(AppState s) => s.navOrder.isEmpty ? _navDefault : s.navOrder;
+
+  /// 上移/下移一格，立刻存下来
+  Future<void> _moveNav(AppState s, int i, int delta) async {
+    final order = [..._navOrderOf(s)];
+    final j = i + delta;
+    if (j < 0 || j >= order.length) return;
+    final t = order[i];
+    order[i] = order[j];
+    order[j] = t;
+    await s.setNavOrder(order);
+    if (mounted) setState(() {});
   }
 
   /// 日历小趣味开关：勾一下立刻存进 vault（跟着同步走）

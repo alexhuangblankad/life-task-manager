@@ -22,9 +22,13 @@ Write-Host "编译目录 : $tmp"
 if (-not (Test-Path $flutter)) { throw "找不到 flutter: $flutter" }
 
 Write-Host ""
-Write-Host "[1/4] 复制源码到 ASCII 目录..."
-if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
-robocopy $src $tmp /E /XD build .dart_tool .idea .git .vscode ephemeral /XF *.log /NFL /NDL /NJH /NJS /NP | Out-Null
+# 增量：临时目录**不删**，只把改动过的文件同步过去。
+# 之前每次都删掉重建，编译缓存全丢，重编一次要 3 分钟；
+# 保留临时目录后 Flutter 只重编改动部分，几十秒就够了。
+Write-Host "[1/4] 增量同步源码到 ASCII 目录..."
+if (-not (Test-Path $tmp)) { New-Item -ItemType Directory -Path $tmp | Out-Null }
+# /XO = 只覆盖源里更新的文件；不删目标里的东西，缓存才留得住
+robocopy $src $tmp /E /XO /XD build .dart_tool .idea .git .vscode dist dist_installer ephemeral /XF *.log /NFL /NDL /NJH /NJS /NP | Out-Null
 
 Write-Host "[2/4] 编译 release（第一次会比较慢）..."
 Push-Location $tmp

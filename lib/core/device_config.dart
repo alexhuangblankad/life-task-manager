@@ -78,6 +78,7 @@ class DeviceConfig {
     this.ai = const AiConfig(),
     this.fontChoice = 'noto',
     this.fontScale = 'normal',
+    this.navOrder = const [],
   });
 
   String vaultPath;
@@ -103,6 +104,9 @@ class DeviceConfig {
   /// 字号档位：small / normal / large / huge
   String fontScale;
 
+  /// 左侧导航栏的显示顺序（页面 id 列表）。空 = 用默认顺序。
+  List<String> navOrder;
+
   Map<String, dynamic> toJson() => {
         'version': 1,
         'vault_path': vaultPath,
@@ -115,6 +119,7 @@ class DeviceConfig {
         'ai': ai.toJson(),
         'font_choice': fontChoice,
         'font_scale': fontScale,
+        'nav_order': navOrder,
       };
 
   static DeviceConfig fromJson(Map<String, dynamic> j) => DeviceConfig(
@@ -133,6 +138,9 @@ class DeviceConfig {
         ai: AiConfig.fromJson((j['ai'] as Map?)?.cast<String, dynamic>() ?? const {}),
         fontChoice: (j['font_choice'] ?? 'noto').toString(),
         fontScale: (j['font_scale'] ?? 'normal').toString(),
+        navOrder: (j['nav_order'] is List)
+            ? (j['nav_order'] as List).map((e) => e.toString()).toList()
+            : const [],
       );
 }
 
@@ -163,6 +171,13 @@ String defaultVaultPath() {
   final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
   if (Platform.isWindows) {
     return p.join(home, 'Documents', kAppDirName);
+  }
+  if (Platform.isAndroid || Platform.isIOS) {
+    // 手机上没有 USERPROFILE，也没有「文档目录」这个概念。
+    // 先落在应用私有目录（不用申请任何权限就能读写）；
+    // 想放公共目录（文件管理器里能看见）以后再加「所有文件访问权限」那条路。
+    final base = Directory.systemTemp.parent.path;
+    return p.join(base, 'files', kAppDirName);
   }
   return p.join(home, 'Documents', kAppDirName);
 }

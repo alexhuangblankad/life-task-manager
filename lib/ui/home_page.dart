@@ -19,15 +19,23 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _index = 0;
+  /// 当前显示哪一页（存的是「页面 id」不是下标 —— 用户调顺序后下标会变，
+  /// 存下标会导致调完顺序界面跳到别的页去）
+  String _page = 'countdown';
 
-  static const _destinations = [
-    NavigationRailDestination(icon: Icon(Icons.hourglass_bottom_outlined), selectedIcon: Icon(Icons.hourglass_bottom), label: Text('倒计时')),
-    NavigationRailDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: Text('日历')),
-    NavigationRailDestination(icon: Icon(Icons.checklist_outlined), selectedIcon: Icon(Icons.checklist), label: Text('待办')),
-    NavigationRailDestination(icon: Icon(Icons.edit_note_outlined), selectedIcon: Icon(Icons.edit_note), label: Text('杂记')),
-    NavigationRailDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: Text('设置')),
-  ];
+  /// 页面定义。显示顺序由用户在设置里调（见 AppState.navOrder）
+  static const _destinations = <String, NavigationRailDestination>{
+    'countdown': NavigationRailDestination(icon: Icon(Icons.hourglass_bottom_outlined), selectedIcon: Icon(Icons.hourglass_bottom), label: Text('倒计时')),
+    'calendar': NavigationRailDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: Text('日历')),
+    'tasks': NavigationRailDestination(icon: Icon(Icons.checklist_outlined), selectedIcon: Icon(Icons.checklist), label: Text('待办')),
+    'notes': NavigationRailDestination(icon: Icon(Icons.edit_note_outlined), selectedIcon: Icon(Icons.edit_note), label: Text('杂记')),
+    'settings': NavigationRailDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: Text('设置')),
+  };
+
+  /// 页面实例固定按这个顺序放进 IndexedStack：
+  /// IndexedStack 靠「类型 + 位置」复用 State，顺序跟着用户走的话，
+  /// 改完顺序 Flutter 会把 A 页的 State 塞给 B 页（就是之前那个勾选不刷新的坑）。
+  static const _canonical = ['countdown', 'calendar', 'tasks', 'notes', 'settings'];
 
   @override
   Widget build(BuildContext context) {
@@ -39,13 +47,17 @@ class _HomePageState extends State<HomePage> {
     // State 会按 widget 类型+位置复用，所以日历选中的日期、输入框里的字都不会丢。
     return ListenableBuilder(
       listenable: s,
-      builder: (context, _) => Scaffold(
+      builder: (context, _) {
+        final order = s.navOrder.isEmpty ? _canonical : s.navOrder;
+        final selected = order.indexOf(_page) < 0 ? 0 : order.indexOf(_page);
+        final current = order[selected];
+        return Scaffold(
         body: Row(
           children: [
             NavigationRail(
               extended: MediaQuery.of(context).size.width > 1100,
-              selectedIndex: _index,
-              onDestinationSelected: (i) => setState(() => _index = i),
+              selectedIndex: selected,
+              onDestinationSelected: (i) => setState(() => _page = order[i]),
               labelType: MediaQuery.of(context).size.width > 1100 ? null : NavigationRailLabelType.all,
               leading: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
@@ -81,12 +93,12 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
-              destinations: _destinations,
+              destinations: [for (final id in order) _destinations[id]!],
             ),
             const VerticalDivider(width: 1),
             Expanded(
               child: IndexedStack(
-                index: _index,
+                index: _canonical.indexOf(current),
                 children: [
                   CountdownPage(state: s),
                   CalendarPage(state: s),
@@ -98,7 +110,8 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-      ),
+        );
+      },
     );
   }
 }

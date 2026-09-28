@@ -41,6 +41,14 @@ class TrayController with tray.TrayListener, WindowListener {
     await windowManager.ensureInitialized();
     await windowManager.setTitle('人生任务管理器');
     await windowManager.setMinimumSize(const Size(900, 600));
+    // 隐藏系统标题栏那条黑杠，只保留右上角最小化/最大化/关闭。
+    // 拖窗口改由自绘的 AppTitleBar 负责（见 ui/title_bar.dart）。
+    if (Platform.isWindows || Platform.isMacOS) {
+      await windowManager.setTitleBarStyle(
+        TitleBarStyle.hidden,
+        windowButtonVisibility: true,
+      );
+    }
 
     tray.trayManager.addListener(this);
     await tray.trayManager.setIcon('assets/tray.ico');

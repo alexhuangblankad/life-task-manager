@@ -2,6 +2,9 @@ import 'dart:ui' show FontVariation;
 
 import 'package:flutter/material.dart';
 
+// 字号档位住在 core/font_scale.dart（状态层也要用），这里转出去给设置页用
+export '../core/font_scale.dart' show kFontScales, fontScaleOf, fontScaleName;
+
 /// 内置字体的 family 名（pubspec 里声明的）
 const String kNotoFamily = 'NotoSansSC';
 
@@ -14,28 +17,6 @@ const List<({String id, String name})> kFontChoices = [
   (id: 'noto', name: 'Noto Sans SC（内置 · 接近苹方）'),
   (id: 'system', name: '跟随系统'),
 ];
-
-/// 字号档位
-const List<({String id, String name, double scale})> kFontScales = [
-  (id: 'small', name: '小', scale: 0.95),
-  (id: 'normal', name: '标准', scale: 1.08),
-  (id: 'large', name: '大', scale: 1.22),
-  (id: 'huge', name: '特大', scale: 1.38),
-];
-
-double fontScaleOf(String id) {
-  for (final s in kFontScales) {
-    if (s.id == id) return s.scale;
-  }
-  return 1.08;
-}
-
-String fontScaleName(String id) {
-  for (final s in kFontScales) {
-    if (s.id == id) return s.name;
-  }
-  return '标准';
-}
 
 /// 可变字体要显式给 wght 轴，否则永远渲染成 Regular —— 粗体不粗、标题会糊
 ///
@@ -85,11 +66,10 @@ ThemeData buildAppTheme(
   );
 
   final family = fontChoice == 'system' ? null : kNotoFamily;
-  final scale = fontScaleOf(fontScale);
 
-  // 以 M3 默认排版为底，换字体 → 调字号 → 给可变字体补字重轴
+  // 字号不在这里缩放（不然和 MediaQuery 的 textScaler 叠加，会放大两次）
   final base = ThemeData(brightness: brightness, useMaterial3: true);
-  final text = _tuneAll(base.textTheme, family, scale, family != null);
+  final text = _tuneAll(base.textTheme, family, 1.0, family != null);
 
   return ThemeData(
     useMaterial3: true,

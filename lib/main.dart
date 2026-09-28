@@ -9,6 +9,7 @@ import 'app_state.dart';
 import 'core/device_config.dart';
 import 'ui/close_choice_dialog.dart';
 import 'ui/home_page.dart';
+import 'ui/title_bar.dart';
 import 'ui/theme.dart';
 import 'ui/tray.dart';
 
@@ -107,7 +108,21 @@ class _LifeTaskManagerAppState extends State<LifeTaskManagerApp> {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
-        home: HomePage(state: state),
+        // 字号靠 textScaler 生效：它作用在「最终渲染的每一段文字」上，
+        // 界面上那些写死 fontSize 的地方（日历小字、副标题…）也跟着变大变小。
+        // 只改主题的 textTheme 是不够的 —— 那样写死的字号纹丝不动（踩过这个坑）。
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(state.fontScaleValue),
+          ),
+          child: child!,
+        ),
+        home: Column(
+          children: [
+            const AppTitleBar(),
+            Expanded(child: HomePage(state: state)),
+          ],
+        ),
       ),
     );
   }

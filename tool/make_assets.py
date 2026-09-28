@@ -31,7 +31,12 @@ d.text((w // 2, h // 2 - 36), "收款码占位", font=font(30, True), fill="#394
 d.text((w // 2, h // 2 + 6), "把图片放到", font=font(20), fill="#6b7488", anchor="mm")
 d.text((w // 2, h // 2 + 38), "assets/donate_qr.png", font=font(18, True), fill="#39415a", anchor="mm")
 d.text((w // 2, h // 2 + 76), "定额 5 元", font=font(20, True), fill="#c0392b", anchor="mm")
-img.save(os.path.join(OUT, "donate_qr.png"))
+# 只在「还没有真图」时生成占位图 —— 千万别覆盖用户真实的收款码（踩过这个坑）
+qr_path = os.path.join(OUT, "donate_qr.png")
+if os.path.exists(qr_path):
+    print("donate_qr.png 已存在，跳过（不覆盖真实收款码）")
+else:
+    img.save(qr_path)
 print("donate_qr.png 生成完毕", img.size)
 
 # ── 2. 应用图标 / 托盘图标：深蓝圆角方块 + 沙漏 ──

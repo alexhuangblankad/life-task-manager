@@ -10,6 +10,7 @@ import 'package:local_notifier/local_notifier.dart';
 
 import 'core/countdown.dart';
 import 'core/device_config.dart';
+import 'core/font_scale.dart';
 import 'core/front_matter.dart';
 import 'core/history_today.dart';
 import 'core/ids.dart';
@@ -333,10 +334,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─────────────────────── 导航栏顺序 ───────────────────────
+
+  /// 导航栏顺序（空 = 默认）
+  List<String> get navOrder => device.navOrder;
+
+  Future<void> setNavOrder(List<String> order) async {
+    device.navOrder = order;
+    await saveDeviceConfig();
+    notifyListeners();
+  }
+
   // ─────────────────────── 字体与字号 ───────────────────────
 
   String get fontChoice => device.fontChoice;
   String get fontScale => device.fontScale;
+
+  /// 实际缩放倍数（给 MediaQuery.textScaler 用）
+  double get fontScaleValue => fontScaleOf(device.fontScale);
 
   Future<void> setFont({String? choice, String? scale}) async {
     if (choice != null) device.fontChoice = choice;
