@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'app_state.dart';
 import 'core/device_config.dart';
+import 'core/single_instance.dart';
 import 'ui/close_choice_dialog.dart';
 import 'ui/home_page.dart';
 import 'ui/title_bar.dart';
@@ -31,6 +32,15 @@ Future<void> main() async {
     ));
   }
 
+  // 单实例：关窗口缩到托盘后进程还在，用户再点桌面图标不应该再开一个进程，
+  // 而应该把已有那个的窗口叫回来。锁在进程退出时由系统自动释放。
+  final localDir = File(defaultDeviceConfigPath()).parent.path;
+  final single = SingleInstance(localDir);
+  if (!await single.acquire()) {
+    await single.requestShow();
+    exit(0);
+  }
+
   final state = AppState();
   final tray = TrayController(state: state);
 
@@ -41,12 +51,16 @@ Future<void> main() async {
   runApp(LifeTaskManagerApp(state: state, tray: tray));
 
   // 等第一帧渲染完再干这些重活，别卡启动
+  // 有人点了桌面图标 → 把窗口叫回来（每秒看一眼，代价可以忽略）
+  Timer.periodic(const Duration(seconds: 1), (_) async {
+    if (await single.consumeShowRequest()) await tray.showWindow();
+  });
+
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     // 先加载数据，界面这时候显示「正在打开…」
     await state.bootstrap();
     await tray.setup();
-    // 提醒记录放本机（不进 vault，免得同步来同步去）
-    final localDir = File(defaultDeviceConfigPath()).parent.path;
+    // 提醒记录放本机（不进 vault，免得同步来同步去）；目录上面已经算过了
 
     // 提醒稍后再排：安卓首次要把未来 7 天的提醒逐个交给系统闹钟
     // （一串平台调用），放在启动瞬间会明显顿一下

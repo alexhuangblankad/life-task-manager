@@ -313,9 +313,11 @@ Future<void> _showNewTaskDialog(BuildContext context, AppState state) async {
     context: context,
     builder: (_) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
+        // 内容高时自动可滚：否则底部的「创建」按钮会被挤出屏幕外，用户以为点不了
+        scrollable: true,
         title: const Text('新增大任务'),
         content: SizedBox(
-          width: 460,
+          width: dialogWidth(context, 460),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -368,13 +370,29 @@ Future<void> _showNewTaskDialog(BuildContext context, AppState state) async {
           FilledButton(
             onPressed: () async {
               final t = title.text.trim();
-              if (t.isEmpty) return;
-              await state.createTask(
-                title: t,
-                description: desc.text.trim(),
-                deadline: deadline,
-                tags: tags.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-              );
+              if (t.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('大任务名称不能空着')),
+                );
+                return;
+              }
+              try {
+                await state.createTask(
+                  title: t,
+                  description: desc.text.trim(),
+                  deadline: deadline,
+                  tags: tags.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+                );
+              } catch (e) {
+                // 以前这里没有 try/catch：写盘一出错就什么反应都没有，
+                // 用户看到的就是「创建不了」，连个提示都没有
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('创建失败：$e')),
+                  );
+                }
+                return;
+              }
               if (context.mounted) Navigator.pop(context);
             },
             child: const Text('创建'),
@@ -396,9 +414,11 @@ Future<void> _showAddSubtaskDialog(BuildContext context, AppState state, TaskFil
     context: context,
     builder: (_) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
+        // 内容高时自动可滚：否则底部的「创建」按钮会被挤出屏幕外，用户以为点不了
+        scrollable: true,
         title: Text('给「${tf.task.title}」加小任务'),
         content: SizedBox(
-          width: 460,
+          width: dialogWidth(context, 460),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -520,9 +540,11 @@ Future<void> _showEditSubtaskDialog(BuildContext context, AppState state, TaskFi
     context: context,
     builder: (_) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
+        // 内容高时自动可滚：否则底部的「创建」按钮会被挤出屏幕外，用户以为点不了
+        scrollable: true,
         title: const Text('编辑小任务'),
         content: SizedBox(
-          width: 460,
+          width: dialogWidth(context, 460),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -658,9 +680,11 @@ Future<void> _showEditTaskDialog(BuildContext context, AppState state, TaskFile 
     context: context,
     builder: (_) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
+        // 内容高时自动可滚：否则底部的「创建」按钮会被挤出屏幕外，用户以为点不了
+        scrollable: true,
         title: const Text('编辑大任务'),
         content: SizedBox(
-          width: 460,
+          width: dialogWidth(context, 460),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
