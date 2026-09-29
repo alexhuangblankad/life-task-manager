@@ -79,6 +79,8 @@ class DeviceConfig {
     this.fontChoice = 'noto',
     this.fontScale = 'normal',
     this.navOrder = const [],
+    this.backgroundPath = '',
+    this.backgroundBlur = 8,
   });
 
   String vaultPath;
@@ -107,6 +109,13 @@ class DeviceConfig {
   /// 左侧导航栏的显示顺序（页面 id 列表）。空 = 用默认顺序。
   List<String> navOrder;
 
+  /// 背景图（绝对路径）。空 = 不用背景。
+  /// 放本机配置里而不是 vault：背景是私人的东西，而且每台设备屏幕不一样。
+  String backgroundPath;
+
+  /// 背景模糊程度 0-30（越大越糊，字越清楚）
+  double backgroundBlur;
+
   Map<String, dynamic> toJson() => {
         'version': 1,
         'vault_path': vaultPath,
@@ -120,6 +129,8 @@ class DeviceConfig {
         'font_choice': fontChoice,
         'font_scale': fontScale,
         'nav_order': navOrder,
+        'background_path': backgroundPath,
+        'background_blur': backgroundBlur,
       };
 
   static DeviceConfig fromJson(Map<String, dynamic> j) => DeviceConfig(
@@ -141,6 +152,8 @@ class DeviceConfig {
         navOrder: (j['nav_order'] is List)
             ? (j['nav_order'] as List).map((e) => e.toString()).toList()
             : const [],
+        backgroundPath: (j['background_path'] ?? '').toString(),
+        backgroundBlur: double.tryParse((j['background_blur'] ?? '8').toString())?.clamp(0, 30) ?? 8,
       );
 }
 

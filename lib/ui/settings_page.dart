@@ -143,6 +143,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       items: const [
                         DropdownMenuItem(value: 'tray', child: Text('缩到右下角托盘，后台继续跑', style: TextStyle(fontSize: 14))),
                         DropdownMenuItem(value: 'quit', child: Text('直接退出程序', style: TextStyle(fontSize: 14))),
+                        DropdownMenuItem(value: 'ask', child: Text('每次关闭都问我', style: TextStyle(fontSize: 14))),
                       ],
                       onChanged: (v) async {
                         if (v == null) return;
@@ -443,6 +444,67 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: Gaps.l),
 
           const SizedBox(height: Gaps.l),
+
+          const SizedBox(height: Gaps.l),
+
+          // ── 背景图 ──
+          _Card(
+            title: '背景图（可选）',
+            children: [
+              Text(
+                '把喜欢的图片丢进「文档\LifeTaskManager\config\背景\」，回到这里就能选。'
+                '背景只存在本机、不参与同步 —— 每台设备屏幕不一样，而且这是私人的东西。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              FutureBuilder<List<String>>(
+                future: s.backgroundCandidates(),
+                builder: (context, snap) {
+                  final items = snap.data ?? const <String>[];
+                  final cur = s.backgroundPath.isEmpty ? '' : s.backgroundPath.split(RegExp(r'[/\\]')).last;
+                  return DropdownButtonFormField<String>(
+                    initialValue: items.contains(cur) ? cur : '',
+                    isDense: true,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                      labelText: '背景图',
+                      helperText: items.isEmpty ? '这个目录里还没有图片' : '共 ${items.length} 张可选',
+                    ),
+                    items: [
+                      const DropdownMenuItem(value: '', child: Text('不用背景', style: TextStyle(fontSize: 14))),
+                      for (final n in items)
+                        DropdownMenuItem(value: n, child: Text(n, style: const TextStyle(fontSize: 14))),
+                    ],
+                    onChanged: (v) async {
+                      if (v == null) return;
+                      await s.setBackground(path: v.isEmpty ? '' : s.backgroundAbsPath(v));
+                      if (mounted) setState(() {});
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const SizedBox(width: 72, child: Text('模糊')),
+                  Expanded(
+                    child: Slider(
+                      value: s.backgroundBlur.clamp(0, 30),
+                      min: 0,
+                      max: 30,
+                      divisions: 30,
+                      label: s.backgroundBlur.round().toString(),
+                      onChanged: (v) => s.setBackground(blur: v),
+                    ),
+                  ),
+                  SizedBox(width: 42, child: Text('${s.backgroundBlur.round()}', textAlign: TextAlign.right)),
+                ],
+              ),
+              Text('糊一点字更清楚（默认 8）；设成 0 就是原图。',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
 
           // ── 导航栏顺序 ──
           _Card(

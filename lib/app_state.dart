@@ -187,7 +187,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 今天要提醒几条（铃铛上的小红点用）
-  int get todayReminderCount => reminderItems().length;
+  int get todayReminderCount => reminderItems(DateTime.now()).length;
 
   /// 立刻检查并弹一次系统通知（铃铛面板里手动触发，方便验证通知有没有生效）
   Future<int> notifyNow() async {
@@ -199,26 +199,29 @@ class AppState extends ChangeNotifier {
     return _reminder!.check();
   }
 
-  /// 今天/此刻要提醒的事。
+  /// 某一天要提醒的事。
   ///
-  /// key 里带上「这一次」的标识（日期或时刻），同一次只弹一回。
-  /// - 任务自己的提醒 🔔（到期当天 / 提前N天 / 指定时间）→ 到点必弹，不看总开关
-  /// - 到期待办、今天该做的定时任务、今天计划做的 → 受「任务提醒」总开关控制
-  /// - 日程自己的提醒 🔔（提前N分钟 / 开始时）
-  List<ReminderItem> reminderItems() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  /// 每条都带上 fireAt（该在哪一刻弹）。为什么要按天收集：
+  /// 安卓上得把未来几天的提醒**提前交给系统闹钟**，App 被杀了才弹得出来；
+  /// 桌面端只需要当天到点那一刻弹一下就够。
+  ///
+  /// key 里带「这一次」的标识（日期或时刻），同一次只提醒一回。
+  List<ReminderItem> reminderItems(DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
     final out = <ReminderItem>[];
     final auto = profile.calendar.remindOnTaskDay;
+
+    // 没设时间的提醒默认早上 9 点弹（不打扰睡觉时间）
+    DateTime at9(DateTime x) => DateTime(x.year, x.month, x.day, 9);
 
     for (final tf in tasks) {
       for (final st in tf.task.subtasks) {
         if (st.done) continue;
 
-        // 1) 任务自己设的提醒：到点就弹
+        // 1) 任务自己设的提醒 🔔（在这个日子就提醒，不看总开关）
         final rule = st.reminder;
         final fire = rule?.fireAt(st.due);
-        if (rule != null && fire != null && _due(fire, now)) {
+        if (rule != null && fire != null && fire.year == d.year && fire.month == d.month && fire.day == d.day) {
           out.add(ReminderItem(
             key: 'rem-${st.id}-${fire.toIso8601String()}',
             title: '提醒：${st.title}',
@@ -227,91 +230,78 @@ class AppState extends ChangeNotifier {
               rule.label,
               if (st.due != null) '到期 ${formatDate(st.due!)}',
             ].join(' · '),
+            fireAt: fire,
           ));
         }
 
         if (!auto) continue;
 
-        // 2) 到期的
-        if (st.due != null && !st.isRepeating) {
-          final left = calendarDaysBetween(today, st.due!);
-          if (left <= 0) {
-            out.add(ReminderItem(
-              key: 'due-${st.id}-${formatDate(st.due!)}',
-              title: left == 0 ? '今天到期：${st.title}' : '逾期 ${-left} 天：${st.title}',
-              body: tf.task.title,
-            ));
-          }
-        }
-
-        // 3) 今天该做的定时任务（每月15日 / 每月农历十五 …）
-        if (st.isRepeating && st.repeatsOn(today) && !isRepeatDoneOn(st.id, today)) {
+        // 2) 今天到期的
+        if (st.due != null && !st.isRepeating && st.due!.year == d.year && st.due!.month == d.month && st.due!.day == d.day) {
+          final left = calendarDaysBetween(DateTime.now(), st.due!);
           out.add(ReminderItem(
-            key: 'rep-${st.id}-${formatDate(today)}',
-            title: '今天要做：${st.title}',
-            body: '${tf.task.title} · ${st.repeat!.label}',
+            key: 'due-${st.id}-${formatDate(st.due!)}',
+            title: left >= 0 ? '今天到期：${st.title}' : '逾期 ${-left} 天：${st.title}',
+            body: tf.task.title,
+            fireAt: at9(d),
           ));
         }
 
-        // 4) 今天计划做的
-        if (!st.isRepeating && st.isPlannedOn(today)) {
+        // 3) 这天该做的定时任务（每月15日 / 每月农历初一十五 …）
+        if (st.isRepeating && st.repeatsOn(d) && !isRepeatDoneOn(st.id, d)) {
           out.add(ReminderItem(
-            key: 'plan-${st.id}-${formatDate(today)}',
+            key: 'rep-${st.id}-${formatDate(d)}',
+            title: '今天要做：${st.title}',
+            body: '${tf.task.title} · ${st.repeat!.label}',
+            fireAt: at9(d),
+          ));
+        }
+
+        // 4) 计划这天做的
+        if (!st.isRepeating && st.isPlannedOn(d)) {
+          out.add(ReminderItem(
+            key: 'plan-${st.id}-${formatDate(d)}',
             title: '今天打算做：${st.title}',
             body: tf.task.title,
+            fireAt: at9(d),
           ));
         }
       }
     }
 
-    // 日程自己设的提醒（重复日程每次发生都会提醒）
+    // 5) 日程自己的提醒（重复日程每周/每月那几天都会提醒）
     for (final e in events) {
-      final at = e.remindAt;
-      if (e.done || at == null) continue;
-      final occurs = e.occursOnDay(today);
-      final repeating = e.isRepeating;
-      if (!occurs && !repeating) continue;
+      if (e.done) continue;
+      if (!e.occursOnDay(d)) continue;
+      final r = e.reminder;
+      if (r == null) continue;
 
-      // 重复日程：把提醒时刻挪到今天来算（比如「每月初一 08:00 提醒」）
+      final base = DateTime(d.year, d.month, d.day, e.start.hour, e.start.minute);
       final DateTime fire;
-      if (repeating) {
-        final base = DateTime(today.year, today.month, today.day, e.start.hour, e.start.minute);
-        final r = e.reminder;
-        if (r == null) continue;
-        switch (r.kind) {
-          case RemindKind.minutesBefore:
-            fire = base.subtract(Duration(minutes: r.minutes ?? 0));
-          case RemindKind.atTime:
-            fire = r.at ?? base;
-          case RemindKind.onDueDay:
-            fire = base;
-          case RemindKind.daysBefore:
-            fire = base.subtract(Duration(days: r.days ?? 0));
-        }
-        if (!occurs) continue;
-      } else {
-        fire = at;
+      switch (r.kind) {
+        case RemindKind.minutesBefore:
+          fire = base.subtract(Duration(minutes: r.minutes ?? 0));
+        case RemindKind.atTime:
+          fire = DateTime(d.year, d.month, d.day, r.at?.hour ?? e.start.hour, r.at?.minute ?? e.start.minute);
+        case RemindKind.onDueDay:
+          fire = base;
+        case RemindKind.daysBefore:
+          fire = base.subtract(Duration(days: r.days ?? 0));
       }
 
-      if (!_due(fire, now)) continue;
       out.add(ReminderItem(
         key: 'evt-${e.id}-${fire.toIso8601String()}',
-        title: '日程：${e.title}',
+        title: e.title,
         body: [
           '${formatDate(e.start)} ${e.timeLabel}',
           if (e.repeat != null) e.repeat!.label,
-          e.reminder!.label,
+          r.label,
         ].join(' · '),
+        fireAt: fire,
       ));
     }
 
     return out;
-  }
-
-  /// 提醒到点了没（顺带补提醒：最多补最近 7 天错过的，别让关机期间的事消失）
-  static bool _due(DateTime fire, DateTime now) {
-    if (fire.isAfter(now)) return false;
-    return now.difference(fire).inDays <= 7;
   }
 
   // ─────────────────────── AI 周报 / 月报 ───────────────────────
@@ -326,10 +316,23 @@ class AppState extends ChangeNotifier {
 
   // ─────────────────────── 关闭行为 ───────────────────────
 
-  /// 保存「关窗口时怎么办」。[remember] 为 false 时只对这一次生效（下次还问）。
+  /// 保存「关窗口时怎么办」。
+  ///
+  /// [action] 三种：'tray' 缩托盘、'quit' 直接退出、'ask' 每次都问我。
+  /// [remember] 为 false 时只对这一次生效（下次还问）。
+  ///
+  /// 坑：以前这里默认 remember=true，而设置页的下拉框也会调它 —— 结果用户只要
+  /// 碰过一次设置页，closeActionChosen 就变 true，那个「第一次关窗口先问你」的
+  /// 弹框**再也不会出现**，点关闭就无声缩托盘。现在多一个 'ask' 选项兜底。
   Future<void> setCloseAction(String action, {bool remember = true}) async {
-    device.closeAction = action == 'quit' ? 'quit' : 'tray';
-    if (remember) device.closeActionChosen = true;
+    final a = (action == 'quit' || action == 'ask') ? action : 'tray';
+    device.closeAction = a;
+    // 选「每次都问」= 回到没选过的状态
+    if (a == 'ask') {
+      device.closeActionChosen = false;
+    } else if (remember) {
+      device.closeActionChosen = true;
+    }
     await saveDeviceConfig();
     notifyListeners();
   }
@@ -344,6 +347,35 @@ class AppState extends ChangeNotifier {
     await saveDeviceConfig();
     notifyListeners();
   }
+
+  // ─────────────────────── 背景图 ───────────────────────
+
+  String get backgroundPath => device.backgroundPath;
+  double get backgroundBlur => device.backgroundBlur;
+
+  Future<void> setBackground({String? path, double? blur}) async {
+    if (path != null) device.backgroundPath = path;
+    if (blur != null) device.backgroundBlur = blur.clamp(0, 30);
+    await saveDeviceConfig();
+    notifyListeners();
+  }
+
+  /// 背景图候选：vault 里 config/背景/ 目录下的图片。
+  /// 不用文件选择器也能挑图 —— 把图丢进这个目录就行。
+  static const String backgroundDir = '${VaultLayout.configDir}/背景';
+
+  Future<List<String>> backgroundCandidates() async {
+    final rel = <String>[];
+    for (final name in await repo.listFiles(backgroundDir)) {
+      final lower = name.toLowerCase();
+      if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp') || lower.endsWith('.bmp')) {
+        rel.add(name);
+      }
+    }
+    return rel;
+  }
+
+  String backgroundAbsPath(String name) => repo.abs('$backgroundDir/$name');
 
   // ─────────────────────── 字体与字号 ───────────────────────
 
@@ -485,6 +517,40 @@ class AppState extends ChangeNotifier {
 
   Future<String?> readReport(String fileName) =>
       repo.readFileOrNull('${VaultLayout.reportDir}/$fileName');
+
+
+  /// 最近一期报告（倒计时页显示评分用）。null = 还没生成过。
+  Future<LatestReport?> latestReport() async {
+    final files = await listReports();
+    if (files.isEmpty) return null;
+    final text = await readReport(files.first);
+    if (text == null) return null;
+
+    final fm = parseFrontMatter(text);
+    int? num(String k) => int.tryParse((fm.data[k] ?? '').toString());
+
+    String? comment;
+    final i = fm.body.indexOf('## AI 评语');
+    if (i >= 0) {
+      var rest = fm.body.substring(i + '## AI 评语'.length);
+      final j = rest.indexOf('\n## ');
+      if (j >= 0) rest = rest.substring(0, j);
+      final t = rest.trim();
+      if (t.isNotEmpty) comment = t;
+    }
+
+    return LatestReport(
+      fileName: files.first,
+      period: (fm.data['period'] ?? fm.data['label'] ?? '').toString(),
+      suffix: (fm.data['suffix'] ?? '').toString(),
+      objective: num('objective_score') ?? 0,
+      ai: num('ai_score'),
+      overall: num('overall_score') ?? 0,
+      comment: comment,
+      provider: (fm.data['provider'] ?? '').toString(),
+      model: (fm.data['model'] ?? '').toString(),
+    );
+  }
 
   Future<void> reloadAll() async {
     await _loadAll();

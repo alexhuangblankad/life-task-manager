@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import 'ai_score_card.dart';
 import '../core/countdown.dart';
 import 'home_page.dart';
 import 'profile_dialog.dart';
@@ -27,6 +28,8 @@ class CountdownPage extends StatelessWidget {
         padding: Gaps.page,
         children: [
           _LifeCard(state: state),
+          const SizedBox(height: Gaps.l),
+          AiScoreCard(state: state),
           const SizedBox(height: Gaps.l),
           _TaskDeadlineSection(state: state),
         ],

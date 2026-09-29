@@ -489,3 +489,42 @@ String buildReportPrompt(PeriodSummary s, {String extra = ''}) {
     ..writeln('{"score": 数字, "comment": "评语", "highlights": ["…"], "suggestions": ["…"]}');
   return b.toString();
 }
+
+/// 「最近一期报告」的摘要（倒计时页要显示评分和评语，不用读整篇）
+class LatestReport {
+  const LatestReport({
+    required this.fileName,
+    required this.period,
+    required this.suffix,
+    required this.objective,
+    required this.overall,
+    this.ai,
+    this.comment,
+    this.provider = '',
+    this.model = '',
+  });
+
+  final String fileName;
+
+  /// 「2026 年 9 月」或「2026 年 9 月 21 日 ~ 9 月 27 日」
+  final String period;
+
+  /// 周报 / 月报 / 季报 / 双周报 / 周期报
+  final String suffix;
+
+  final int objective;
+  final int? ai;
+  final int overall;
+  final String? comment;
+  final String provider;
+  final String model;
+
+  /// 综合分对应的说法
+  String get verdict {
+    if (overall >= 85) return '这个阶段很稳';
+    if (overall >= 70) return '整体不错';
+    if (overall >= 55) return '还行，有提升空间';
+    if (overall >= 40) return '有点松，下期紧一紧';
+    return '这段基本躺平了';
+  }
+}

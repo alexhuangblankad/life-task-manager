@@ -158,7 +158,7 @@ void main() {
   });
 
   testWidgets('外观：能切到暗色，并且跟着状态走', (tester) async {
-    await pumpApp(tester, height: 5200);
+    await pumpApp(tester, height: 7000);
     await goTab(tester, '设置');
     expect(find.text('外观'), findsOneWidget);
 
@@ -173,14 +173,14 @@ void main() {
   });
 
   testWidgets('设置页有收款码入口（支持作者）', (tester) async {
-    await pumpApp(tester, height: 5200);
+    await pumpApp(tester, height: 7000);
     await goTab(tester, '设置');
     expect(find.text('支持作者'), findsOneWidget);
     expect(find.textContaining('5 元'), findsWidgets);
-    expect(find.byType(Image), findsWidgets, reason: '收款码图片要显示出来');
-    // 要挂的是真图那个资源，别挂错文件（图片本身能不能解码由 test/asset_test.dart 管）
-    final img = tester.widget<Image>(find.byType(Image).first);
-    expect((img.image as AssetImage).assetName, 'assets/donate_qr.png');
+    // 直接找那张图，别用 .first ——「关于」里也有图片，谁先谁后会变
+    final qr = find.byWidgetPredicate((w) =>
+        w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == 'assets/donate_qr.png');
+    expect(qr, findsWidgets, reason: '收款码图片要显示出来');
   });
 
   testWidgets('杂记页：两种杂记都在，能按月过滤', (tester) async {
@@ -212,7 +212,7 @@ void main() {
   });
 
   testWidgets('设置页：数据位置 / WebDAV / 关于 三块都在', (tester) async {
-    await pumpApp(tester, height: 5200);
+    await pumpApp(tester, height: 7000);
     await goTab(tester, '设置');
     expect(find.textContaining('数据位置'), findsOneWidget);
     expect(find.textContaining('WebDAV'), findsWidgets);

@@ -28,7 +28,8 @@ robocopy $src $tmp /E /XD build .dart_tool .idea .git .vscode dist dist_installe
 
 Write-Host "[2/4] 编译 release APK（第一次会比较慢）..."
 Push-Location $tmp
-& $flutter build apk --release
+# 按 CPU 架构分三个包（胖包 74MB，拆开每个约 25-30MB，用户按手机下对应的就行）
+& $flutter build apk --release --split-per-abi
 $code = $LASTEXITCODE
 Pop-Location
 if ($code -ne 0) { throw "APK 编译失败，退出码 $code" }
@@ -38,11 +39,21 @@ if (-not (Test-Path $built)) { throw "没找到 APK：$built" }
 
 Write-Host "[3/4] 复制 APK 到 dist_installer ..."
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
-$dst = Join-Path $outDir 'LifeTaskManager-1.0.3.apk'
-Copy-Item $built $dst -Force
-
-$mb = [math]::Round((Get-Item $dst).Length / 1MB, 1)
-Write-Host "[4/4] 完成: $dst  ($mb MB)"
+$map = @{
+  'app-arm64-v8a-release.apk'   = 'LifeTaskManager-1.1.0-arm64-v8a.apk'
+  'app-armeabi-v7a-release.apk' = 'LifeTaskManager-1.1.0-armeabi-v7a.apk'
+  'app-x86_64-release.apk'      = 'LifeTaskManager-1.1.0-x86_64.apk'
+}
+foreach ($k in $map.Keys) {
+  $srcApk = Join-Path $apkDir $k
+  if (Test-Path $srcApk) {
+    $dst = Join-Path $outDir $map[$k]
+    Copy-Item $srcApk $dst -Force
+    $mb = [math]::Round((Get-Item $dst).Length / 1MB, 1)
+    Write-Host "      $($map[$k])  ($mb MB)"
+  }
+}
+Write-Host "[4/4] 完成，三个架构包都在 $outDir"
 Write-Host ""
 Write-Host "传到手机上：数据线拷过去点安装，或者 adb install -r 这个文件。"
 Write-Host "首次安装需要在手机设置里允许「安装未知来源应用」。"

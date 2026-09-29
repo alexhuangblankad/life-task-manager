@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -89,6 +90,12 @@ class _LifeTaskManagerAppState extends State<LifeTaskManagerApp> {
     }
   }
 
+  /// 主题：设了背景图就把 Scaffold 底色弄透明，不然背景全被盖住看不见
+  ThemeData _themed(Brightness b) {
+    final t = buildAppTheme(b, fontChoice: state.fontChoice, fontScale: state.fontScale);
+    return state.backgroundPath.isEmpty ? t : t.copyWith(scaffoldBackgroundColor: Colors.transparent);
+  }
+
   @override
   Widget build(BuildContext context) {
     // 监听状态：改主题、改期限、勾任务之后界面才会跟着变
@@ -98,8 +105,8 @@ class _LifeTaskManagerAppState extends State<LifeTaskManagerApp> {
         title: '人生任务管理器',
         debugShowCheckedModeBanner: false,
         navigatorKey: _navKey,
-        theme: buildAppTheme(Brightness.light, fontChoice: state.fontChoice, fontScale: state.fontScale),
-        darkTheme: buildAppTheme(Brightness.dark, fontChoice: state.fontChoice, fontScale: state.fontScale),
+        theme: _themed(Brightness.light),
+        darkTheme: _themed(Brightness.dark),
         themeMode: state.themeMode,
         locale: const Locale('zh', 'CN'),
         localizationsDelegates: const [
@@ -117,13 +124,57 @@ class _LifeTaskManagerAppState extends State<LifeTaskManagerApp> {
           ),
           child: child!,
         ),
-        home: Column(
+        home: Stack(
           children: [
-            const AppTitleBar(),
-            Expanded(child: HomePage(state: state)),
+            // 背景图（设了才画）+ 模糊
+            if (state.backgroundPath.isNotEmpty)
+              Positioned.fill(child: _AppBackground(state: state)),
+            Column(
+              children: [
+                const AppTitleBar(),
+                Expanded(child: HomePage(state: state)),
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+}
+
+/// 背景图 + 模糊。模糊是为了让上面的字看得清 —— 不糊的话亮图会把字吃掉。
+class _AppBackground extends StatelessWidget {
+  const _AppBackground({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final file = File(state.backgroundPath);
+    if (!file.existsSync()) return const SizedBox.shrink();
+
+    final blur = state.backgroundBlur;
+    Widget img = Image.file(
+      file,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+
+    if (blur > 0) {
+      // 放大一点点：模糊会把边缘往外晕开，不放大就会在边上露出底色
+      img = ClipRect(
+        child: Transform.scale(
+          scale: 1.08,
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+            child: img,
+          ),
+        ),
+      );
+    }
+    return img;
   }
 }

@@ -50,6 +50,11 @@ class TrayController with tray.TrayListener, WindowListener {
       );
     }
 
+    // 关键两行：不注册监听器 + 不开 preventClose，点关闭就是直接关窗口，
+    // 「缩托盘/退出」那个选择框永远不会出现（onWindowClose 根本不会被调用）
+    windowManager.addListener(this);
+    await windowManager.setPreventClose(true);
+
     tray.trayManager.addListener(this);
     await tray.trayManager.setIcon('assets/tray.ico');
     await tray.trayManager.setToolTip(state.trayTooltip);
@@ -84,12 +89,13 @@ class TrayController with tray.TrayListener, WindowListener {
   @override
   void onWindowClose() async {
     if (_quitting) return;
-    // 还没明确选过 → 先问一次，不擅自决定（万一人家就是想退出）
-    if (!state.device.closeActionChosen) {
+    final action = state.device.closeAction;
+    // 'ask' = 每次都问；没选过也问（第一次）
+    if (action == 'ask' || !state.device.closeActionChosen) {
       closePrompt.value++;
       return;
     }
-    await applyCloseAction(state.device.closeAction);
+    await applyCloseAction(action);
   }
 
   /// 按用户的选择处理关闭：缩到托盘 or 真的退出

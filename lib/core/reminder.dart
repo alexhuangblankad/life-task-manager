@@ -1,119 +1,129 @@
-/// 桌面提醒：今天到期的、今天该做的（含重复任务），各提醒一次。
+/// 提醒服务：收集「该提醒的事」→ 到点弹 / 预约。
 ///
-/// 用 local_notifier 弹系统通知（Windows 右下角那种）。
-/// 同一天同一条只提醒一次，提醒记录存在本机，重启也不会重复弹。
+/// 两端的差别（重要）：
+///   桌面：每分钟检查一次，到点就用 local_notifier 弹（桌面进程不会被杀，够用）
+///   安卓：往前多看几天，把未来要提醒的事**提前预约到系统闹钟**（zedSchedule），
+///        这样 App 被系统杀掉也照样提醒。只靠 App 自己弹在安卓上等于没有提醒。
 library;
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:local_notifier/local_notifier.dart';
+import 'notifier.dart';
 
 /// 一条要提醒的事
 class ReminderItem {
-  const ReminderItem({required this.key, required this.title, required this.body});
+  const ReminderItem({
+    required this.key,
+    required this.title,
+    required this.body,
+    this.fireAt,
+  });
+
+  /// 唯一标识，带上「这一次」的信息（日期或时刻），同一次只提醒一回
   final String key;
   final String title;
   final String body;
+
+  /// 该在什么时候弹；null = 立刻
+  final DateTime? fireAt;
 }
 
 class ReminderService {
-  ReminderService({
-    required this.collect,
-    required this.storePath,
-    this.onClick,
-    this.clock,
-  });
+  ReminderService({required this.collect, required this.storePath});
 
-  /// 由外层提供「今天要提醒什么」，避免这里依赖 AppState
-  final List<ReminderItem> Function() collect;
+  /// 给定某一天，返回那天要提醒的事（由 AppState 提供）
+  final List<ReminderItem> Function(DateTime day) collect;
   final String storePath;
-  final void Function()? onClick;
-  final DateTime Function()? clock;
 
   Timer? _timer;
-  bool _ready = false;
+  final Set<String> _handled = {};
 
-  DateTime get _now => (clock ?? DateTime.now)();
+  /// 往前看几天（补提醒：关机/没开 App 期间错过的）
+  static const int _daysBack = 7;
 
-  bool get _supported => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+  /// 往后看几天（安卓上要提前交给系统闹钟）
+  static const int _daysAhead = 7;
 
   Future<void> start() async {
-    if (!_supported) return;
-    try {
-      await localNotifier.setup(appName: '人生任务管理器');
-      _ready = true;
-    } catch (_) {
-      // 通知不可用不是致命问题：界面里的显示照旧
-      _ready = false;
-      return;
-    }
+    await _load();
+    await Notifier.init();
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(minutes: 1), (_) => check());
     await check();
   }
 
-  void stop() {
+  Future<void> stop() async {
     _timer?.cancel();
     _timer = null;
   }
 
-  /// 检查并弹出今天还没提醒过的事项
+  /// 检查一遍：到点的弹出来，未来的（安卓）预约给系统。返回这次处理了几条。
   Future<int> check() async {
-    if (!_ready) return 0;
-    final items = collect();
-    if (items.isEmpty) return 0;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var count = 0;
 
-    final notified = await _load();
-    var shown = 0;
-
-    for (final item in items) {
-      // key 自己就带「这一次」的标识，不用再加日期后缀
-      final token = item.key;
-      if (notified.contains(token)) continue;
+    for (var offset = -_daysBack; offset <= _daysAhead; offset++) {
+      final day = today.add(Duration(days: offset));
+      List<ReminderItem> items;
       try {
-        final n = LocalNotification(title: item.title, body: item.body);
-        n.onClick = () => onClick?.call();
-        await n.show();
-        notified.add(token);
-        shown++;
-      } catch (_) {
-        break; // 弹不出来就别继续了
+        items = collect(day);
+      } catch (e) {
+        continue; // 某天算挂了不能影响其它天
+      }
+
+      for (final item in items) {
+        if (_handled.contains(item.key)) continue;
+        final at = item.fireAt ?? now;
+
+        if (at.isAfter(now)) {
+          // 还没到点：移动端交给系统闹钟；桌面端留着自己到点再弹
+          if (Notifier.supportsScheduling) {
+            await Notifier.scheduleAt(
+              key: item.key,
+              when: at,
+              title: item.title,
+              body: item.body,
+            );
+            _handled.add(item.key);
+            count++;
+          }
+          continue;
+        }
+
+        // 已经到点（含补最近几天错过的）
+        await Notifier.show(key: item.key, title: item.title, body: item.body);
+        _handled.add(item.key);
+        count++;
       }
     }
 
-    if (shown > 0) await _save(notified);
-    return shown;
+    if (count > 0) await _save();
+    return count;
   }
 
-  static String _dateKey(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  // ── 记录哪些提醒已经处理过（存本机，不进 vault）──
 
-  Future<Set<String>> _load() async {
+  Future<void> _load() async {
     try {
       final f = File(storePath);
-      if (!await f.exists()) return {};
+      if (!await f.exists()) return;
       final json = jsonDecode(await f.readAsString());
-      if (json is Map && json['notified'] is List) {
-        final list = (json['notified'] as List).map((e) => e.toString()).toSet();
-        // 只留最近 7 天的记录，别无限长
-        final keep = <String>{};
-        for (var i = 0; i < 8; i++) {
-          final k = _dateKey(_now.subtract(Duration(days: i)));
-          keep.addAll(list.where((e) => e.endsWith('@$k')));
-        }
-        return keep;
+      if (json is List) {
+        _handled.addAll(json.map((e) => e.toString()));
       }
     } catch (_) {}
-    return {};
   }
 
-  Future<void> _save(Set<String> notified) async {
+  Future<void> _save() async {
     try {
+      // 只留最近这些，别让文件无限长大
+      final list = _handled.length > 600 ? _handled.toList().sublist(_handled.length - 600) : _handled.toList();
       final f = File(storePath);
       await f.parent.create(recursive: true);
-      await f.writeAsString(jsonEncode({'notified': notified.toList()}));
+      await f.writeAsString(jsonEncode(list));
     } catch (_) {}
   }
 }
