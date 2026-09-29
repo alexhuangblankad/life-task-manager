@@ -214,7 +214,7 @@ void main() {
   testWidgets('设置页：数据位置 / WebDAV / 关于 三块都在', (tester) async {
     await pumpApp(tester, height: 7000);
     await goTab(tester, '设置');
-    expect(find.textContaining('数据位置'), findsOneWidget);
+    expect(find.textContaining('数据位置'), findsWidgets, reason: '卡片标题 + 关于里的更新日志都会提到');
     expect(find.textContaining('WebDAV'), findsWidgets);
     expect(find.textContaining('关于'), findsOneWidget);
     expect(find.text(vaultPath), findsOneWidget, reason: 'vault 路径要显示出来');
