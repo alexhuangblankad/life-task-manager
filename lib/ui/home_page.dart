@@ -215,7 +215,14 @@ class PageScaffold extends StatelessWidget {
                     titleWidget,
                     if (actions.isNotEmpty) ...[
                       const SizedBox(height: 10),
-                      Wrap(spacing: 8, runSpacing: 8, children: actions),
+                      // Wrap 默认是顶部对齐 —— 48 高的图标按钮会跟小号文字错开，
+                      // 看起来就是「月份和箭头不齐平」。居中对齐才对。
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: actions,
+                      ),
                     ],
                   ],
                 ),

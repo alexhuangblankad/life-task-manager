@@ -56,35 +56,35 @@ class _CalendarPageState extends State<CalendarPage> {
           // 手机上 400 + 分隔线就把宽度吃光，当日日程只剩十几 dp，**整块看不见**。
           final narrow = c.maxWidth < 700;
           if (narrow) {
-            // 格子高度按可用高度算：日历占大头，但一定给下面的日程列表留位置
-            final cellH = ((c.maxHeight - 260) / 6).clamp(44.0, 74.0);
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                  child: Card(
+            // 整页一起滚（不是只滚下面那一小块）：
+            // 下面固定成一个窄条的话，能看到的信息太少，日程一多就得在里面再滚一次。
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Card(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
                       child: Column(
                         children: [
-                          _buildCalendar(context, s, cellH),
+                          _buildCalendar(context, s, 64),
                           const SizedBox(height: 4),
                           const _Legend(),
                         ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: _DayPanel(
+                  const SizedBox(height: 10),
+                  // embedded：跟着整页滚，不再自己滚（避免两层滚动打架）
+                  _DayPanel(
                     state: s,
                     day: _selected,
+                    embedded: true,
                     onWriteDiary: () => _writeDiary(context, _selected),
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           }
           return Row(
@@ -462,11 +462,19 @@ class _Legend extends StatelessWidget {
 }
 
 class _DayPanel extends StatelessWidget {
-  const _DayPanel({required this.state, required this.day, required this.onWriteDiary});
+  const _DayPanel({
+    required this.state,
+    required this.day,
+    required this.onWriteDiary,
+    this.embedded = false,
+  });
 
   final AppState state;
   final DateTime day;
   final VoidCallback onWriteDiary;
+
+  /// true = 自己是外面某个滚动视图里的一段，不要再套一层滚动
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
@@ -489,9 +497,7 @@ class _DayPanel extends StatelessWidget {
             ? (state.history?.of(day) ?? const <HistoryEvent>[])
             : const <HistoryEvent>[];
 
-        return ListView(
-          padding: Gaps.page,
-          children: [
+        final items = <Widget>[
             Text(dateHeader(day), style: Theme.of(context).textTheme.titleLarge),
             if (prefs.showLunar || prefs.showHoliday)
               Padding(
@@ -730,8 +736,19 @@ class _DayPanel extends StatelessWidget {
                 ),
               ),
             ],
-          ],
-        );
+          ];
+
+        // embedded = 跟着外面那层一起滚（整页滚动时别套两层，会打架）
+        if (embedded) {
+          return Padding(
+            padding: Gaps.page,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: items,
+            ),
+          );
+        }
+        return ListView(padding: Gaps.page, children: items);
       },
     );
   }
