@@ -97,7 +97,8 @@ class _CalendarPageState extends State<CalendarPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Card(child: Padding(padding: const EdgeInsets.all(8), child: _buildCalendar(context, s, 52))),
+                      // PC 上原来每格 52 有点挤（数字+农历+圆点），拉高一点更透气
+                      Card(child: Padding(padding: const EdgeInsets.all(8), child: _buildCalendar(context, s, 62))),
                       const SizedBox(height: Gaps.m),
                       const _Legend(),
                     ],
@@ -240,36 +241,52 @@ class _CalendarPageState extends State<CalendarPage> {
         ? scheme.onPrimary
         : (isToday ? scheme.primary : (outside ? scheme.outline : scheme.onSurface));
 
+    // 长节日名（「全民国防教育日」这种）以前会把整个格子连日期数字一起缩到很小，
+    // 现在只压小字、不动数字：超过 5 个字截断加省略号
+    final subText = (sub != null && sub.length > 5) ? '${sub.substring(0, 5)}…' : sub;
+
     return Container(
       margin: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: isSelected ? scheme.primary : null,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: FittedBox(
-        // 内容缩放到格子里，别让日期/农历被裁掉或互相压住
-        fit: BoxFit.scaleDown,
+      child: Padding(
+        // 底部留一条给小圆点（标记画在格子底部，不留位置就会压在农历小字上）
+        padding: const EdgeInsets.only(top: 5, bottom: 12),
         child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '${day.day}',
-            style: TextStyle(
-              color: fg,
-              fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w400,
-              fontSize: 13,
-            ),
-          ),
-          if (sub != null)
+          // 靠上排、不居中：格子数都一样高，日期数字自然就在同一条水平线上
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
             Text(
-              sub,
-              maxLines: 1,
-              overflow: TextOverflow.clip,
+              '${day.day}',
               style: TextStyle(
-                fontSize: 9,
-                height: 1.1,
-                color: isSelected ? scheme.onPrimary : subColor,
+                color: fg,
+                fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w400,
+                fontSize: 14,
+                height: 1.0,
               ),
+            ),
+            const SizedBox(height: 2),
+            // 小字位置**固定高度**：没有小字的日子也占位，
+            // 否则有农历的格子会被挤高一截，日期数字上下就对不齐了
+            SizedBox(
+              height: 13,
+              child: subText == null
+                  ? null
+                  : FittedBox(
+                      // 只让小字自己缩放，日期数字保持固定大小
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        subText,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 10,
+                          height: 1.0,
+                          color: isSelected ? scheme.onPrimary : subColor,
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
