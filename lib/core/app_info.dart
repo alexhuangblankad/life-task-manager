@@ -2,14 +2,15 @@
 library;
 
 const String kAppName = '人生任务管理器';
-const String kAppVersion = '1.1.6';
+const String kAppVersion = '1.1.7';
 const String kAppRepoUrl = 'https://github.com/alexhuangblankad/life-task-manager';
 const String kAppTagline = '人生倒计时 · 日历 · 待办 · 杂记';
 const String kAppLicense = 'MIT 开源许可';
 
 /// 这一版改了什么（关于页直接列出来，省得用户去翻仓库）
 const List<String> kAppChangelog = [
-  '修：点桌面图标真的不会再开新进程了（换掉了失效的文件锁方案，实测通过）',
+  '修：暗色主题下顶部那条白带（状态栏那块底色取错了主题上下文）',
+  '（1.1.6）点桌面图标不会再开新进程（实测通过）',
   '（1.1.5）界面铺满窗口，修好安卓顶部那条白带；刘海/挖孔屏适配',
   '修：刘海/挖孔屏适配（shortEdges + 状态栏导航栏透明）',
   '单实例加了诊断日志，方便确认点图标时到底有没有拦住新进程',

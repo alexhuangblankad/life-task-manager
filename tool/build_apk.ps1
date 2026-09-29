@@ -36,9 +36,9 @@ Pop-Location
 if ($code -ne 0) { throw "APK 编译失败，退出码 $code" }
 
 $map = @{
-  'app-arm64-v8a-release.apk'   = 'LifeTaskManager-1.1.6-arm64-v8a.apk'
-  'app-armeabi-v7a-release.apk' = 'LifeTaskManager-1.1.6-armeabi-v7a.apk'
-  'app-x86_64-release.apk'      = 'LifeTaskManager-1.1.6-x86_64.apk'
+  'app-arm64-v8a-release.apk'   = 'LifeTaskManager-1.1.7-arm64-v8a.apk'
+  'app-armeabi-v7a-release.apk' = 'LifeTaskManager-1.1.7-armeabi-v7a.apk'
+  'app-x86_64-release.apk'      = 'LifeTaskManager-1.1.7-x86_64.apk'
 }
 $apkDir = Join-Path $tmp 'build\app\outputs\flutter-apk'
 # --split-per-abi 出的是三个 app-<abi>-release.apk，没有 app-release.apk 这个胖包，

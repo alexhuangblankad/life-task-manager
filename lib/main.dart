@@ -164,14 +164,18 @@ class _LifeTaskManagerAppState extends State<LifeTaskManagerApp> {
         // 界面上那些写死 fontSize 的地方（日历小字、副标题…）也跟着变大变小。
         // 只改主题的 textTheme 是不够的 —— 那样写死的字号纹丝不动（踩过这个坑）。
         builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-          // 状态栏/导航栏图标颜色跟着主题走（深色界面用浅色图标，不然看不见）
+          // 状态栏/导航栏**不能设成透明**：
+          // 透明之后它背后什么都没有，会透出安卓主题的窗口底色 ——
+          // 系统是浅色、App 选了暗色时，顶上就是一条白带（用户截图确认过）。
+          // 正确做法是拿 App 自己的底色去涂它，图标颜色跟着主题明暗走。
           value: (Theme.of(context).brightness == Brightness.dark
                   ? SystemUiOverlayStyle.light
                   : SystemUiOverlayStyle.dark)
               .copyWith(
-            statusBarColor: Colors.transparent,
-            systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarContrastEnforced: false,
+            statusBarColor: Theme.of(context).colorScheme.surface,
+            systemNavigationBarColor: Theme.of(context).colorScheme.surface,
+            systemNavigationBarIconBrightness:
+                Theme.of(context).brightness == Brightness.dark ? Brightness.light : Brightness.dark,
           ),
           child: MediaQuery(
             data: MediaQuery.of(context).copyWith(
@@ -188,7 +192,13 @@ class _LifeTaskManagerAppState extends State<LifeTaskManagerApp> {
             // 不铺的话 SafeArea 把内容推下去之后，上面那块没人画 → 露出窗口黑底，
             // 就是"用黑条糊住异形屏"的观感。铺了之后刘海区域跟页面同色。
             Positioned.fill(
-              child: ColoredBox(color: Theme.of(context).scaffoldBackgroundColor),
+              // 注意：这里必须用 **MaterialApp 内部** 的 context 取主题。
+              // 直接写 Theme.of(context) 拿到的是 State 的 context ——
+              // 位置在 MaterialApp 之上，是最外层的默认（浅色）主题，
+              // 暗色模式下就会给状态栏那块画成白色（用户截图里那条白带）。
+              child: Builder(
+                builder: (ctx) => ColoredBox(color: Theme.of(ctx).colorScheme.surface),
+              ),
             ),
             // 背景图（设了才画）+ 模糊
             if (state.backgroundPath.isNotEmpty)
