@@ -173,7 +173,7 @@ class _TaskCard extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: Text(tf.task.filePath),
         content: SizedBox(
-          width: 720,
+          width: dialogWidth(context, 720),
           height: 480,
           child: SingleChildScrollView(
             child: SelectableText(raw, style: const TextStyle(fontFamily: 'Consolas', fontSize: 13, height: 1.5)),

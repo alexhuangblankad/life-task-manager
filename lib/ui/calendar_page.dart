@@ -81,6 +81,9 @@ class _CalendarPageState extends State<CalendarPage> {
       selectedDayPredicate: (d) => isSameDay(d, _selected),
       calendarFormat: CalendarFormat.month,
       availableCalendarFormats: const {CalendarFormat.month: '月'},
+      // 手机上格子要高一些：日期 + 农历小字 + 底部圆点标记挤在默认 52 里会叠在一起
+      rowHeight: MediaQuery.sizeOf(context).width < 520 ? 70 : 52,
+      daysOfWeekHeight: MediaQuery.sizeOf(context).width < 520 ? 30 : 16,
       headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
       eventLoader: (day) => [
         ...s.eventsOfDay(day),
@@ -162,7 +165,10 @@ class _CalendarPageState extends State<CalendarPage> {
         color: isSelected ? scheme.primary : null,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
+      child: FittedBox(
+        // 内容缩放到格子里，别让日期/农历被裁掉或互相压住
+        fit: BoxFit.scaleDown,
+        child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
@@ -184,7 +190,8 @@ class _CalendarPageState extends State<CalendarPage> {
                 color: isSelected ? scheme.onPrimary : subColor,
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

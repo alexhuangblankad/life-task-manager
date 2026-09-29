@@ -160,11 +160,23 @@ class DeviceConfig {
 /// 设备本地配置放在哪（Windows/macOS/Linux 各按各的规矩）
 String _closeActionOf(Map<String, dynamic> j) {
   final v = (j['close_action'] ?? '').toString();
-  if (v == 'tray' || v == 'quit') return v;
+  // 三种都算数：'ask' = 每次关闭都弹框问。
+  // 少认 'ask' 的话，读回来会被归一成 'tray'，设置页那个下拉框会跳回「缩托盘」
+  if (v == 'tray' || v == 'quit' || v == 'ask') return v;
   return j['run_in_tray'] == false ? 'quit' : 'tray';
 }
 
 String defaultDeviceConfigPath() {
+  // 手机：配置放应用私有目录。
+  //
+  // 这里**必须**单独处理：安卓上 HOME 是空的，往下走会拼成 `./.config/...`
+  // 这种相对路径，而安卓进程的工作目录是只读的根目录 →
+  // 每次启动都抛 FileSystemException(Read-only file system)，
+  // 配置一分钱都存不下来（设置、WebDAV 账号、AI Key 全丢）。
+  if (Platform.isAndroid || Platform.isIOS) {
+    return p.join(_mobileAppDir(), kAppDirName, 'device.json');
+  }
+
   final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
   if (Platform.isWindows) {
     final appData = Platform.environment['APPDATA'];
@@ -189,11 +201,18 @@ String defaultVaultPath() {
     // 手机上没有 USERPROFILE，也没有「文档目录」这个概念。
     // 先落在应用私有目录（不用申请任何权限就能读写）；
     // 想放公共目录（文件管理器里能看见）以后再加「所有文件访问权限」那条路。
-    final base = Directory.systemTemp.parent.path;
-    return p.join(base, 'files', kAppDirName);
+    return p.join(_mobileAppDir(), kAppDirName);
   }
   return p.join(home, 'Documents', kAppDirName);
 }
+
+/// 手机上的应用私有目录（可写）。
+///
+/// 安卓上没有 HOME，`Directory.systemTemp` 是……/<包名>/cache，
+/// 它的上一级就是私有数据目录，再进 files/ 就对了。
+/// 关键：**不能用相对路径** —— 安卓进程的工作目录是只读的根目录，
+/// 任何 `./xxx` 都会报 "Read-only file system"。
+String _mobileAppDir() => p.join(Directory.systemTemp.parent.path, 'files');
 
 /// 本机默认设备名（同步冲突副本里会带上它，便于分辨是谁改的）
 String defaultDeviceName() {
@@ -214,7 +233,12 @@ class DeviceConfigStore {
         vaultPath: defaultVaultPath(),
         deviceName: defaultDeviceName(),
       );
-      await save(cfg);
+      try {
+        await save(cfg);
+      } catch (_) {
+        // 存不下（路径不可写等）也别让 App 起不来 —— 以前这里会把异常抛到
+        // main 的 bootstrap 里，安卓上每次启动都报一次
+      }
       return cfg;
     }
     try {

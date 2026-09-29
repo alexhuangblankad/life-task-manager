@@ -23,6 +23,11 @@ class _HomePageState extends State<HomePage> {
   /// 存下标会导致调完顺序界面跳到别的页去）
   String _page = 'countdown';
 
+  /// 已经打开过的页面。IndexedStack 会把 children 全部 build 一遍，
+  /// 手机上等于一启动就渲染日历 42 格 + 杂记列表 + 设置页那一堆卡片 ——
+  /// 又慢又卡。这里只建「访问过」的页面，没去过的先放空占位。
+  final Set<String> _visited = {'countdown'};
+
   /// 页面定义。显示顺序由用户在设置里调（见 AppState.navOrder）
   static const _destinations = <String, NavigationRailDestination>{
     'countdown': NavigationRailDestination(icon: Icon(Icons.hourglass_bottom_outlined), selectedIcon: Icon(Icons.hourglass_bottom), label: Text('倒计时')),
@@ -51,13 +56,31 @@ class _HomePageState extends State<HomePage> {
         final order = s.navOrder.isEmpty ? _canonical : s.navOrder;
         final selected = order.indexOf(_page) < 0 ? 0 : order.indexOf(_page);
         final current = order[selected];
+        // 手机窄屏：左边那条导航栏会吃掉大半宽度（内容区只剩 280px 左右，
+        // 卡片全被挤到溢出、拖动都卡），所以窄屏换成底部标签栏
+        final narrow = MediaQuery.of(context).size.width < 700;
         return Scaffold(
+        bottomNavigationBar: narrow
+            ? NavigationBar(
+                selectedIndex: selected,
+                onDestinationSelected: (i) => _select(order[i]),
+                destinations: [
+                  for (final id in order)
+                    NavigationDestination(
+                      icon: _destinations[id]!.icon,
+                      selectedIcon: _destinations[id]!.selectedIcon,
+                      label: _labelOf(id),
+                    ),
+                ],
+              )
+            : null,
         body: Row(
           children: [
-            NavigationRail(
+            if (!narrow)
+              NavigationRail(
               extended: MediaQuery.of(context).size.width > 1100,
               selectedIndex: selected,
-              onDestinationSelected: (i) => setState(() => _page = order[i]),
+              onDestinationSelected: (i) => _select(order[i]),
               labelType: MediaQuery.of(context).size.width > 1100 ? null : NavigationRailLabelType.all,
               leading: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
@@ -99,12 +122,11 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: IndexedStack(
                 index: _canonical.indexOf(current),
+                // 只建访问过的页面（IndexedStack 会把 children 全部 build，
+                // 5 个页面一起渲染在手机上就是启动慢 + 卡）
                 children: [
-                  CountdownPage(state: s),
-                  CalendarPage(state: s),
-                  TasksPage(state: s),
-                  NotesPage(state: s),
-                  SettingsPage(state: s),
+                  for (final id in _canonical)
+                    _visited.contains(id) ? _buildPage(id, s) : const SizedBox.shrink(),
                 ],
               ),
             ),
@@ -114,6 +136,33 @@ class _HomePageState extends State<HomePage> {
       },
     );
   }
+
+  void _select(String id) {
+    setState(() {
+      _page = id;
+      _visited.add(id);
+      if (id == 'calendar') {
+        // 520KB 的历史数据等真打开日历时再解析，别挡启动
+        widget.state.ensureHistory();
+      }
+    });
+  }
+
+  String _labelOf(String id) => switch (id) {
+        'countdown' => '倒计时',
+        'calendar' => '日历',
+        'tasks' => '待办',
+        'notes' => '杂记',
+        _ => '设置',
+      };
+
+  Widget _buildPage(String id, AppState s) => switch (id) {
+        'countdown' => CountdownPage(state: s),
+        'tasks' => TasksPage(state: s),
+        'notes' => NotesPage(state: s),
+        'settings' => SettingsPage(state: s),
+        _ => CalendarPage(state: s),
+      };
 }
 
 /// 页面通用外壳：标题 + 右侧动作 + 内容
@@ -136,30 +185,54 @@ class PageScaffold extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-          child: Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.headlineSmall),
-                  if (subtitle != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        subtitle!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                      ),
+        LayoutBuilder(
+          builder: (context, c) {
+            final titleWidget = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                if (subtitle != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      subtitle!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                     ),
+                  ),
+              ],
+            );
+
+            // 窄屏（手机）：标题和按钮挤一行的话，右边的按钮会被屏幕边缘切掉
+            // （模拟器实测：「新增日程」被裁了一半）。改成按钮换行放标题下面。
+            if (c.maxWidth < 520) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    if (actions.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Wrap(spacing: 8, runSpacing: 8, children: actions),
+                    ],
+                  ],
+                ),
+              );
+            }
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+              child: Row(
+                children: [
+                  titleWidget,
+                  const Spacer(),
+                  ...actions,
                 ],
               ),
-              const Spacer(),
-              ...actions,
-            ],
-          ),
+            );
+          },
         ),
         const Divider(),
         Expanded(child: child),

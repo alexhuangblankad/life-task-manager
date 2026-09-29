@@ -38,6 +38,7 @@ class ReminderService {
   final String storePath;
 
   Timer? _timer;
+  Timer? _fullTimer;
   final Set<String> _handled = {};
 
   /// 往前看几天（补提醒：关机/没开 App 期间错过的）
@@ -50,22 +51,32 @@ class ReminderService {
     await _load();
     await Notifier.init();
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(minutes: 1), (_) => check());
+    _fullTimer?.cancel();
+    // 每分钟只扫当天：够用，而且 Android 上「15 天 × 全部任务」的整扫
+    // 放在主 isolate 上每分钟跑一次，手机上是肉眼可见的一顿一顿
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) => check(full: false));
+    // 全景扫描（补错过的 + 给系统闹钟续排未来几天）慢一点做就行
+    _fullTimer = Timer.periodic(const Duration(minutes: 30), (_) => check());
     await check();
   }
 
   Future<void> stop() async {
     _timer?.cancel();
     _timer = null;
+    _fullTimer?.cancel();
+    _fullTimer = null;
   }
 
   /// 检查一遍：到点的弹出来，未来的（安卓）预约给系统。返回这次处理了几条。
-  Future<int> check() async {
+  /// [full] false = 只看当天（每分钟的例行检查用，便宜）
+  Future<int> check({bool full = true}) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     var count = 0;
 
-    for (var offset = -_daysBack; offset <= _daysAhead; offset++) {
+    final from = full ? -_daysBack : 0;
+    final to = full ? _daysAhead : 0;
+    for (var offset = from; offset <= to; offset++) {
       final day = today.add(Duration(days: offset));
       List<ReminderItem> items;
       try {

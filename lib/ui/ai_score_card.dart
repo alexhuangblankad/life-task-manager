@@ -150,7 +150,7 @@ class _AiScoreCardState extends State<AiScoreCard> {
       builder: (ctx) => AlertDialog(
         title: Text('${r.period} · ${r.suffix}'),
         content: SizedBox(
-          width: 680,
+          width: dialogWidth(context, 680),
           height: 520,
           child: SingleChildScrollView(child: SelectableText(text ?? '读不到这个文件')),
         ),

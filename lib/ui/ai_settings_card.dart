@@ -105,61 +105,55 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
             ),
 
             // ── 周期 ──
-            Row(
-              children: [
-                const SizedBox(width: 120, child: Text('周期')),
-                Expanded(
+                FieldRow(
+                  label: '周期',
+                  width: 120,
                   child: DropdownButtonFormField<ReportUnit>(
                     initialValue: cycle.unit,
                     decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
                     items: [
-                      for (final u in ReportUnit.values)
-                        DropdownMenuItem(value: u, child: Text(u.label)),
+                    for (final u in ReportUnit.values)
+                    DropdownMenuItem(value: u, child: Text(u.label)),
                     ],
                     onChanged: (u) => u == null
-                        ? null
-                        : _apply(cfg.copyWith(cycle: ReportCycle(
-                            unit: u,
-                            customDays: cycle.customDays,
-                            weekday: cycle.weekday,
-                            monthDay: cycle.monthDay,
-                          ))),
-                  ),
+                    ? null
+                    : _apply(cfg.copyWith(cycle: ReportCycle(
+                    unit: u,
+                    customDays: cycle.customDays,
+                    weekday: cycle.weekday,
+                    monthDay: cycle.monthDay,
+                    ))),
+                    ),
                 ),
-              ],
-            ),
             const SizedBox(height: 10),
 
             // ── 哪天生成（按周期显示不同的选择）──
             if (cycle.unit == ReportUnit.week || cycle.unit == ReportUnit.biweek) ...[
-              Row(
-                children: [
-                  const SizedBox(width: 120, child: Text('哪天总结')),
-                  Expanded(
+                  FieldRow(
+                    label: '哪天总结',
+                    width: 120,
                     child: DropdownButtonFormField<int>(
                       initialValue: cycle.weekday,
                       decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
                       items: const [
-                        DropdownMenuItem(value: 1, child: Text('周一')),
-                        DropdownMenuItem(value: 2, child: Text('周二')),
-                        DropdownMenuItem(value: 3, child: Text('周三')),
-                        DropdownMenuItem(value: 4, child: Text('周四')),
-                        DropdownMenuItem(value: 5, child: Text('周五')),
-                        DropdownMenuItem(value: 6, child: Text('周六')),
-                        DropdownMenuItem(value: 7, child: Text('周日')),
+                      DropdownMenuItem(value: 1, child: Text('周一')),
+                      DropdownMenuItem(value: 2, child: Text('周二')),
+                      DropdownMenuItem(value: 3, child: Text('周三')),
+                      DropdownMenuItem(value: 4, child: Text('周四')),
+                      DropdownMenuItem(value: 5, child: Text('周五')),
+                      DropdownMenuItem(value: 6, child: Text('周六')),
+                      DropdownMenuItem(value: 7, child: Text('周日')),
                       ],
                       onChanged: (w) => w == null
-                          ? null
-                          : _apply(cfg.copyWith(cycle: ReportCycle(
-                              unit: cycle.unit,
-                              customDays: cycle.customDays,
-                              weekday: w,
-                              monthDay: cycle.monthDay,
-                            ))),
-                    ),
+                      ? null
+                      : _apply(cfg.copyWith(cycle: ReportCycle(
+                      unit: cycle.unit,
+                      customDays: cycle.customDays,
+                      weekday: w,
+                      monthDay: cycle.monthDay,
+                      ))),
+                      ),
                   ),
-                ],
-              ),
               const SizedBox(height: 10),
             ],
 
@@ -229,29 +223,26 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
             const Divider(height: 28),
 
             // ── 发行商 ──
-            Row(
-              children: [
-                const SizedBox(width: 120, child: Text('发行商')),
-                Expanded(
+                FieldRow(
+                  label: '发行商',
+                  width: 120,
                   child: DropdownButtonFormField<String>(
                     initialValue: cfg.providerId,
                     decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
                     items: [
-                      for (final prov in kAiProviders)
-                        DropdownMenuItem(value: prov.id, child: Text(prov.name, overflow: TextOverflow.ellipsis)),
+                    for (final prov in kAiProviders)
+                    DropdownMenuItem(value: prov.id, child: Text(prov.name, overflow: TextOverflow.ellipsis)),
                     ],
                     onChanged: (id) => id == null
-                        ? null
-                        : _apply(cfg.copyWith(
-                            providerId: id,
-                            // 换发行商时把模型名和地址清空，回到预设默认值
-                            model: '',
-                            baseUrl: '',
-                          )),
-                  ),
+                    ? null
+                    : _apply(cfg.copyWith(
+                    providerId: id,
+                    // 换发行商时把模型名和地址清空，回到预设默认值
+                    model: '',
+                    baseUrl: '',
+                    )),
+                    ),
                 ),
-              ],
-            ),
             const SizedBox(height: 6),
             if (p.hint.isNotEmpty)
               Text('ℹ️ ${p.hint}', style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
@@ -434,7 +425,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       builder: (ctx) => AlertDialog(
         title: Text(fileName),
         content: SizedBox(
-          width: 640,
+          width: dialogWidth(context, 640),
           height: 480,
           child: SingleChildScrollView(child: SelectableText(text ?? '读不到这个文件')),
         ),

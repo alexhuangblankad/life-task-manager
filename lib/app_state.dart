@@ -66,13 +66,23 @@ class AppState extends ChangeNotifier {
   // ─────────────────────── 启动 ───────────────────────
 
   Future<void> bootstrap() async {
-    device = await _store.load();
-    repo = VaultRepository(device.vaultPath);
-    await repo.ensureStructure();
-    await _loadAll();
-    _timer ??= Timer.periodic(const Duration(seconds: 1), (_) => tick.value = DateTime.now());
-    ready = true;
-    notifyListeners();
+    try {
+      device = await _store.load();
+      repo = VaultRepository(device.vaultPath);
+      await repo.ensureStructure();
+      await _loadAll();
+    } catch (e, st) {
+      // 任何一步挂了，也必须让界面出来。
+      // 以前这里异常往上一抛 → ready 永远是 false → 界面永远停在
+      // 「正在打开本地数据…」，用户看到的就是**卡死**（安卓上就是这么卡的：
+      // 配置路径不可写，load 抛 FileSystemException）。
+      debugPrint('[bootstrap] 加载失败（界面照常打开）：$e');
+      debugPrint('$st');
+    } finally {
+      _timer ??= Timer.periodic(const Duration(seconds: 1), (_) => tick.value = DateTime.now());
+      ready = true;
+      notifyListeners();
+    }
   }
 
   Future<void> _loadAll() async {

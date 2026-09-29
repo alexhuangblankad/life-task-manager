@@ -132,73 +132,64 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  const SizedBox(width: 72, child: Text('关窗口时')),
-                  Expanded(
+                  FieldRow(
+                    label: '关窗口时',
+                    width: 72,
                     child: DropdownButtonFormField<String>(
                       initialValue: s.device.closeAction,
                       isDense: true,
                       decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
                       items: const [
-                        DropdownMenuItem(value: 'tray', child: Text('缩到右下角托盘，后台继续跑', style: TextStyle(fontSize: 14))),
-                        DropdownMenuItem(value: 'quit', child: Text('直接退出程序', style: TextStyle(fontSize: 14))),
-                        DropdownMenuItem(value: 'ask', child: Text('每次关闭都问我', style: TextStyle(fontSize: 14))),
+                      DropdownMenuItem(value: 'tray', child: Text('缩到右下角托盘，后台继续跑', style: TextStyle(fontSize: 14))),
+                      DropdownMenuItem(value: 'quit', child: Text('直接退出程序', style: TextStyle(fontSize: 14))),
+                      DropdownMenuItem(value: 'ask', child: Text('每次关闭都问我', style: TextStyle(fontSize: 14))),
                       ],
                       onChanged: (v) async {
-                        if (v == null) return;
-                        await s.setCloseAction(v);
-                        if (mounted) setState(() {});
+                      if (v == null) return;
+                      await s.setCloseAction(v);
+                      if (mounted) setState(() {});
                       },
-                    ),
+                      ),
                   ),
-                ],
-              ),
               Text(
                 '缩到托盘时倒计时和提醒继续跑，点托盘图标能叫回来；右键托盘可以同步或退出。'
                 '第一次关窗口时会先问你一次，这个选择也能在这儿改。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const Divider(height: 24),
-              Row(
-                children: [
-                  const SizedBox(width: 72, child: Text('字体')),
-                  Expanded(
+                  FieldRow(
+                    label: '字体',
+                    width: 72,
                     child: DropdownButtonFormField<String>(
                       initialValue: s.fontChoice,
                       isDense: true,
                       decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
                       items: [
-                        for (final f in kFontChoices)
-                          DropdownMenuItem(value: f.id, child: Text(f.name, style: const TextStyle(fontSize: 14))),
+                      for (final f in kFontChoices)
+                      DropdownMenuItem(value: f.id, child: Text(f.name, style: const TextStyle(fontSize: 14))),
                       ],
                       onChanged: (v) async {
-                        if (v == null) return;
-                        await s.setFont(choice: v);
-                        if (mounted) setState(() {});
+                      if (v == null) return;
+                      await s.setFont(choice: v);
+                      if (mounted) setState(() {});
                       },
-                    ),
+                      ),
                   ),
-                ],
-              ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  const SizedBox(width: 72, child: Text('字号')),
-                  Expanded(
+                  FieldRow(
+                    label: '字号',
+                    width: 72,
                     child: SegmentedButton<String>(
                       segments: [
-                        for (final f in kFontScales) ButtonSegment(value: f.id, label: Text(f.name)),
+                      for (final f in kFontScales) ButtonSegment(value: f.id, label: Text(f.name)),
                       ],
                       selected: {s.fontScale},
                       onSelectionChanged: (v) async {
-                        await s.setFont(scale: v.first);
-                        if (mounted) setState(() {});
+                      await s.setFont(scale: v.first);
+                      if (mounted) setState(() {});
                       },
-                    ),
+                      ),
                   ),
-                ],
-              ),
               const SizedBox(height: 8),
               Text(
                 '看不清就先调字号。默认字体是内置的 Noto Sans SC（开源，观感接近苹果的苹方，'
@@ -485,10 +476,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 },
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  const SizedBox(width: 72, child: Text('模糊')),
-                  Expanded(
+                  FieldRow(
+                    label: '模糊',
+                    width: 72,
                     child: Slider(
                       value: s.backgroundBlur.clamp(0, 30),
                       min: 0,
@@ -496,11 +486,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       divisions: 30,
                       label: s.backgroundBlur.round().toString(),
                       onChanged: (v) => s.setBackground(blur: v),
-                    ),
+                      ),
                   ),
-                  SizedBox(width: 42, child: Text('${s.backgroundBlur.round()}', textAlign: TextAlign.right)),
-                ],
-              ),
               Text('糊一点字更清楚（默认 8）；设成 0 就是原图。',
                   style: Theme.of(context).textTheme.bodySmall),
             ],
@@ -582,11 +569,34 @@ class _SettingsPageState extends State<SettingsPage> {
                                 color: scheme.primary,
                               ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          kAppLicense,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
+              const Divider(height: 24),
+              Text('这一版改了什么', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              for (final line in kAppChangelog)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('· ', style: Theme.of(context).textTheme.bodySmall),
+                      Expanded(
+                        child: Text(line, style: Theme.of(context).textTheme.bodySmall),
+                      ),
+                    ],
+                  ),
+                ),
               const Divider(height: 24),
               Text(
                 '你的数据长这样（全是纯文本，Obsidian 也能直接读）：',

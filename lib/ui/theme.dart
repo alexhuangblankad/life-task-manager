@@ -105,3 +105,53 @@ class Gaps {
   static const double xl = 24;
   static const EdgeInsets page = EdgeInsets.fromLTRB(20, 16, 20, 20);
 }
+
+/// 一行「标签 + 控件」。
+///
+/// 桌面是左右排（标签固定宽度靠左、控件占右边），但**手机是上下布局** ——
+/// 照搬左右排的话，标签挤在左边、控件被压成一条，很难看也很难点。
+/// 窄屏就自动改成：标签一行，控件在下一行铺满。
+class FieldRow extends StatelessWidget {
+  const FieldRow({super.key, required this.label, required this.child, this.width = 72});
+
+  final String label;
+  final Widget child;
+
+  /// 宽屏时标签占多宽
+  final double width;
+
+  /// 窄屏阈值（和底部标签栏用的一致）
+  static bool isNarrow(BuildContext context) => MediaQuery.sizeOf(context).width < 520;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isNarrow(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 6),
+          child,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(width: width, child: Text(label)),
+        Expanded(child: child),
+      ],
+    );
+  }
+}
+
+/// 对话框宽度：桌面上用设计宽度，手机上收成屏幕宽减一点边距
+double dialogWidth(BuildContext context, double ideal) {
+  final w = MediaQuery.sizeOf(context).width;
+  return w < ideal + 48 ? w - 40 : ideal;
+}
