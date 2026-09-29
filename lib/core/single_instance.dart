@@ -11,6 +11,7 @@
 library;
 
 import 'dart:io';
+import 'dart:io' show pid;
 
 import 'package:path/path.dart' as p;
 
@@ -26,6 +27,16 @@ class SingleInstance {
   String get _showFlagPath => p.join(dir, 'show.flag');
 
   /// true = 我是唯一实例；false = 已经有一个在跑（调用方应请求显示后退出）
+  /// 写一行诊断日志：单实例有没有生效，看这个文件就够了
+  Future<void> _log(String msg) async {
+    try {
+      await File(p.join(dir, 'single_instance.log')).writeAsString(
+        '${DateTime.now().toIso8601String()}  pid=$pid  $msg\n',
+        mode: FileMode.append,
+      );
+    } catch (_) {}
+  }
+
   Future<bool> acquire() async {
     try {
       final f = File(_lockPath);
@@ -33,8 +44,10 @@ class SingleInstance {
       final raf = await f.open(mode: FileMode.write);
       await raf.lock(FileLock.exclusive); // 已被占用会抛异常
       _held = raf;
+      await _log('拿到锁，我是唯一实例');
       return true;
-    } catch (_) {
+    } catch (e) {
+      await _log('锁被占了（已有实例在跑）：$e');
       return false;
     }
   }
@@ -43,6 +56,7 @@ class SingleInstance {
   Future<void> requestShow() async {
     try {
       await File(_showFlagPath).writeAsString('1');
+      await _log('已写 show.flag，请已有实例把窗口显示出来');
     } catch (_) {
       // 连标记都写不下去就只能算了（至少不会开成第二个进程）
     }
@@ -54,6 +68,7 @@ class SingleInstance {
       final f = File(_showFlagPath);
       if (await f.exists()) {
         await f.delete();
+        await _log('收到显示请求，把窗口叫回来');
         return true;
       }
     } catch (_) {}

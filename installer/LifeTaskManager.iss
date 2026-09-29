@@ -10,7 +10,7 @@
 
 #define AppName "人生任务管理器"
 #define AppNameEn "LifeTaskManager"
-#define AppVersion "1.1.4"
+#define AppVersion "1.1.5"
 #define AppExe "life_task_manager.exe"
 #define AppPublisher "LifeTaskManager"
 
