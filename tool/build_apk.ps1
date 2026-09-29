@@ -12,7 +12,8 @@
 $ErrorActionPreference = 'Stop'
 
 $src     = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$tmp     = 'E:\ltm_android_build'
+$tmp     = 'E:\ltm_apk_build'  # 注意：别用之前那个目录名
+                               # 如果有进程的当前目录停在里面，Windows 会锁住整个目录删不掉
 $flutter = 'D:\flutter\bin\flutter.bat'
 $outDir  = Join-Path $src 'dist_installer'
 
@@ -23,7 +24,7 @@ if (-not (Test-Path $flutter)) { throw "找不到 flutter: $flutter" }
 
 Write-Host ""
 Write-Host "[1/4] 复制源码到 ASCII 目录..."
-if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 robocopy $src $tmp /E /XD build .dart_tool .idea .git .vscode dist dist_installer ephemeral /XF *.log /NFL /NDL /NJH /NJS /NP | Out-Null
 
 Write-Host "[2/4] 编译 release APK（第一次会比较慢）..."
@@ -34,16 +35,14 @@ $code = $LASTEXITCODE
 Pop-Location
 if ($code -ne 0) { throw "APK 编译失败，退出码 $code" }
 
-$built = Join-Path $tmp 'build\app\outputs\flutter-apk\app-release.apk'
-if (-not (Test-Path $built)) { throw "没找到 APK：$built" }
-
-Write-Host "[3/4] 复制 APK 到 dist_installer ..."
-if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 $map = @{
   'app-arm64-v8a-release.apk'   = 'LifeTaskManager-1.1.0-arm64-v8a.apk'
   'app-armeabi-v7a-release.apk' = 'LifeTaskManager-1.1.0-armeabi-v7a.apk'
   'app-x86_64-release.apk'      = 'LifeTaskManager-1.1.0-x86_64.apk'
 }
+$apkDir = Join-Path $tmp 'build\app\outputs\flutter-apk'
+# --split-per-abi 出的是三个 app-<abi>-release.apk，没有 app-release.apk 这个胖包，
+# 所以不能去 Test-Path 胖包（以前这里会直接抛「没找到 APK」让整轮打包白跑）
 foreach ($k in $map.Keys) {
   $srcApk = Join-Path $apkDir $k
   if (Test-Path $srcApk) {
