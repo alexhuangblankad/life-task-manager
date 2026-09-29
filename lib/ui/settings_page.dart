@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -244,6 +245,23 @@ class _SettingsPageState extends State<SettingsPage> {
               Wrap(
                 spacing: 8,
                 children: [
+                  FilledButton.icon(
+                    // 系统文件夹选择框：让人自己挑数据放哪儿（比手打路径靠谱得多）
+                    onPressed: () async {
+                      final picked = await getDirectoryPath(
+                        confirmButtonText: '就用这个文件夹',
+                      );
+                      if (picked == null) return; // 用户取消
+                      setState(() => _vault.text = picked);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已选好文件夹，记得点下面的「保存」生效')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                    label: const Text('选择文件夹…'),
+                  ),
                   OutlinedButton.icon(
                     onPressed: () => _openFolder(_vault.text),
                     icon: const Icon(Icons.folder_open, size: 18),
@@ -255,6 +273,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     label: const Text('恢复默认位置'),
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '换位置不会搬动已有数据：新文件夹为空时会自动建好目录结构，'
+                '原来的文件需要你自己拷过去（或者在设置里连上坚果云同步拉回来）。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
               ),
               const SizedBox(height: 10),
               TextField(
