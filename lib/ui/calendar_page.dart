@@ -48,32 +48,111 @@ class _CalendarPageState extends State<CalendarPage> {
           label: const Text('新增日程'),
         ),
       ],
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              padding: Gaps.page,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Card(child: Padding(padding: const EdgeInsets.all(8), child: _buildCalendar(context, s))),
-                  const SizedBox(height: Gaps.m),
-                  const _Legend(),
-                ],
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // 手机（窄屏）：上下布局 —— 月历在上、选中那天的日程/待办占满下方。
+          //
+          // 注意：以前这里是固定的 Row（日历 400 宽 + Expanded 放当日日程），
+          // 手机上 400 + 分隔线就把宽度吃光，当日日程只剩十几 dp，**整块看不见**。
+          final narrow = c.maxWidth < 700;
+          if (narrow) {
+            // 格子高度按可用高度算：日历占大头，但一定给下面的日程列表留位置
+            final cellH = ((c.maxHeight - 260) / 6).clamp(44.0, 74.0);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
+                      child: Column(
+                        children: [
+                          _buildCalendar(context, s, cellH),
+                          const SizedBox(height: 4),
+                          const _Legend(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: _DayPanel(
+                    state: s,
+                    day: _selected,
+                    onWriteDiary: () => _writeDiary(context, _selected),
+                  ),
+                ),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 400,
+                child: SingleChildScrollView(
+                  padding: Gaps.page,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(child: Padding(padding: const EdgeInsets.all(8), child: _buildCalendar(context, s, 52))),
+                      const SizedBox(height: Gaps.m),
+                      const _Legend(),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: _DayPanel(state: s, day: _selected, onWriteDiary: () => _writeDiary(context, _selected))),
-        ],
+              const VerticalDivider(width: 1),
+              Expanded(child: _DayPanel(state: s, day: _selected, onWriteDiary: () => _writeDiary(context, _selected))),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildCalendar(BuildContext context, AppState s) {
-    return TableCalendar<Object>(
+  void _shiftMonth(int delta) {
+    final m = DateTime(_focused.year, _focused.month + delta, 1);
+    setState(() => _focused = m);
+    widget.state.reloadMonth(m);
+  }
+
+  /// [cellH] 每格高度：手机上按可用高度算出来，别再写死
+  Widget _buildCalendar(BuildContext context, AppState s, double cellH) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 月份 + 左右箭头自己画一行：三个东西都在同一个 48 高的 Row 里垂直居中，
+        // 不会出现「月份和箭头不齐平」的问题（TableCalendar 自带表头做不到随字号自适应）
+        SizedBox(
+          height: 48,
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => _shiftMonth(-1),
+                tooltip: '上个月',
+                icon: const Icon(Icons.chevron_left),
+              ),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    '${_focused.year}年${_focused.month}月',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => _shiftMonth(1),
+                tooltip: '下个月',
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+        ),
+        TableCalendar<Object>(
       locale: 'zh_CN',
       firstDay: DateTime(2000, 1, 1),
       lastDay: DateTime(2100, 12, 31),
@@ -81,10 +160,10 @@ class _CalendarPageState extends State<CalendarPage> {
       selectedDayPredicate: (d) => isSameDay(d, _selected),
       calendarFormat: CalendarFormat.month,
       availableCalendarFormats: const {CalendarFormat.month: '月'},
-      // 手机上格子要高一些：日期 + 农历小字 + 底部圆点标记挤在默认 52 里会叠在一起
-      rowHeight: MediaQuery.sizeOf(context).width < 520 ? 70 : 52,
-      daysOfWeekHeight: MediaQuery.sizeOf(context).width < 520 ? 30 : 16,
-      headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
+      // 隐藏自带表头（上面自己画了一行），每格高度由调用方按可用空间算
+      headerVisible: false,
+      rowHeight: cellH,
+      daysOfWeekHeight: 28,
       eventLoader: (day) => [
         ...s.eventsOfDay(day),
         ...s.subtasksDueOn(day),
@@ -123,6 +202,8 @@ class _CalendarPageState extends State<CalendarPage> {
           );
         },
       ),
+        ),
+      ],
     );
   }
 
