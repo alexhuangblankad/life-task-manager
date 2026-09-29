@@ -45,7 +45,7 @@ Name: "chinese"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: unchecked
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："
 Name: "startupicon"; Description: "开机自动启动（常驻右下角托盘提醒）"; GroupDescription: "附加任务："; Flags: unchecked
 
 [Files]
