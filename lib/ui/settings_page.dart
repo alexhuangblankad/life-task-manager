@@ -1,9 +1,9 @@
 import 'dart:io';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../core/folder_picker.dart';
 import '../core/app_info.dart';
 import '../core/device_config.dart';
 import '../model/profile.dart';
@@ -248,9 +248,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   FilledButton.icon(
                     // 系统文件夹选择框：让人自己挑数据放哪儿（比手打路径靠谱得多）
                     onPressed: () async {
-                      final picked = await getDirectoryPath(
-                        confirmButtonText: '就用这个文件夹',
-                      );
+                      final picked = await pickFolder();
                       if (picked == null) return; // 用户取消
                       setState(() => _vault.text = picked);
                       if (mounted) {
