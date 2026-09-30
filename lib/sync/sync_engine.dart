@@ -266,6 +266,22 @@ class SyncEngine {
     if (!dryRun) {
       final text = await backend.getString(path);
       if (text == null) return;
+
+      // 最后一道防线：**覆盖本地之前，再核一次本地文件是不是真的没改过**。
+      // 调用方是依据「本机同步状态」判定本地干净的；万一那份状态不准
+      // （比如上次上传其实没成功、状态却被记成已同步），就会把用户刚改的
+      // 内容用云端旧备份盖掉 —— 用户踩过这个坑。
+      // 这里只要发现本地内容和记录里的哈希对不上，就按**冲突**处理（两边都留），
+      // 宁可多一个文件，也绝不让静默覆盖发生。
+      final baseEntry = base[path];
+      final localNow = await repo.readFileOrNull(path);
+      if (localNow != null &&
+          localNow != text &&
+          (baseEntry == null || sha1Of(utf8.encode(localNow)) != baseEntry.sha1)) {
+        await _makeConflict(path, text, remoteEntry, report, dryRun, base);
+        return;
+      }
+
       await repo.writeFile(path, text);
       base[path] = SyncedFile(sha1: sha1Of(utf8.encode(text)), etag: remoteEntry.etag, syncedAt: _clock());
     }
