@@ -4,6 +4,7 @@
 ///   dart run tool/webdav_check.dart http://127.0.0.1:8099/ user pass /ltm
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:life_task_manager/core/ids.dart';
@@ -134,7 +135,106 @@ Future<void> main(List<String> args) async {
   check('冲突处理后会收敛（不再反复冲突）', rA4.conflicts == 0 && rB4.conflicts == 0,
       'A:${rA4.summary} | B:${rB4.summary}');
 
-  print('\n=== 3. 限流统计 ===');
+  print('\n=== 3. 「只能下载、无法上传」专项（本轮修复的根因） ===');
+  // 用例 A：本地改一个文件 → 同步 → **直接去服务器把那个文件读出来**，
+  // 看内容是不是真的更新了。只看本地「同步完成」的提示不算验证 ——
+  // 当年那个 bug 恰恰在本地看起来一切正常。
+  final ackRel = '杂记/202609/日记/2026-09-28.md';
+  final beforeUpload = await client2.getString(ackRel) ?? '';
+  await vaultA.writeFile(ackRel, '$beforeUpload\nA 在同步前又写了一句话。');
+  final rUpload = await engineA.sync();
+  final afterUpload = await client2.getString(ackRel) ?? '';
+  final afterLocal = await vaultA.readFileOrNull(ackRel) ?? '';
+  check('本地改动真的传上去了（读服务器确认，不信本地提示）',
+      afterUpload.contains('A 在同步前又写了一句话。'), '本地与云端一致=${afterUpload == afterLocal}');
+  check('两端内容逐字节相同',
+      sha1Of(utf8.encode(afterUpload)) == sha1Of(utf8.encode(afterLocal)),
+      '上传 ${rUpload.uploaded} 个 / 错误 ${rUpload.errors.length}');
+
+  // 用例 B：**服务器说谎**。后端包一层：除了 PUT 之外都转发给真服务器，
+  // PUT 一律回一个 ETag 但根本不落盘 —— 这就是用户踩过的场景
+  //（服务端拒绝写入却回成功，我们把状态记成已同步，下次就把云端旧内容
+  //  下载回来盖掉本地新内容）。
+  final liarRoot = '$root-说谎测试';
+  final truth = WebdavClient(baseUrl: url, username: user, password: pass, remoteRoot: liarRoot);
+  final liar = _LyingBackend(truth);
+
+  final tmp2 = await Directory.systemTemp.createTemp('ltm_dav_liar_');
+  final vaultC = VaultRepository('${tmp2.path}/C');
+  await vaultC.ensureStructure();
+  const rel = '杂记/202609/日记/2026-09-28.md';
+  await vaultC.writeFile(rel, '本地第一版\n');
+  final engineC = SyncEngine(
+    repo: vaultC,
+    backend: liar,
+    stateStore: SyncStateStore('${tmp2.path}/stateC.json'),
+    deviceName: '电脑C',
+    remoteRoot: liarRoot,
+  );
+  final rC1 = await engineC.sync();
+  check('第一次同步（服务器说谎）：上传被识破', rC1.errors.isNotEmpty, rC1.summary);
+  check('服务器上确实什么都没写进去', !await truth.exists(rel),
+      '服务器上的内容=${await truth.getString(rel)}');
+
+  // 服务器上备好一份内容，本地也放一模一样的一份（模拟「上次已经同步好的状态」），
+  // 然后再把本地改成「新内容」：服务端照样嘴上答应、实际不写 →
+  // 必须报错、绝不能反过来把本地覆盖掉。
+  await truth.put(rel, '云端旧内容\n');
+  await vaultC.writeFile(rel, '云端旧内容\n');
+  final engineC2 = SyncEngine(
+    repo: vaultC,
+    backend: liar,
+    stateStore: SyncStateStore('${tmp2.path}/stateC2.json'),
+    deviceName: '电脑C',
+    remoteRoot: liarRoot,
+  );
+  final rC2 = await engineC2.sync(); // 内容一致 → 记下基准状态
+  check('先正常同步一次对齐状态', rC2.errors.isEmpty && rC2.conflicts == 0, rC2.summary);
+
+  await vaultC.writeFile(rel, '用户刚改的新内容\n');
+  final rC3 = await engineC2.sync();
+  final localAfter = await vaultC.readFileOrNull(rel) ?? '';
+  final remoteAfter = await truth.getString(rel) ?? '';
+  check('说谎的服务器没让上传「假装成功」', rC3.errors.isNotEmpty, '服务器共说谎 ${liar.lies} 次 / ${rC3.summary}');
+  check('本地新内容没被云端旧内容盖掉', localAfter.contains('用户刚改的新内容'), localAfter.trim());
+  check('本地仍是「脏」的（回读校验拦住了）', rC3.errors.any((e) => e.contains('回读')), rC3.errors.join('；'));
+
+  // 状态文件里绝不能出现「新内容的哈希」—— 一旦记成已同步，下次同步就会
+  // 认为本地干净、云端更新，把旧内容下载回来覆盖。
+  final stateRaw = await File('${tmp2.path}/stateC2.json').readAsString();
+  check('同步状态里没有新内容的哈希（否则下次就会反向覆盖）',
+      !stateRaw.contains(sha1Of(utf8.encode('用户刚改的新内容\n'))));
+
+  // 再同步一次：还是重试上传、还是报错、本地还是那份新内容
+  final rC4 = await engineC2.sync();
+  final localAgain = await vaultC.readFileOrNull(rel) ?? '';
+  check('下次同步仍然重试上传并报错（本地保持脏）',
+      rC4.errors.isNotEmpty && localAgain.contains('用户刚改的新内容'), rC4.summary);
+
+  // 演示（不是断言）：如果没有「上传后回读」这道防线，状态会被记成已同步，
+  // 下一次同步就会把云端旧内容下载回来盖掉本地 —— 这就是用户当年看到的现象。
+  final poisoned = SyncStateStore('${tmp2.path}/state_poisoned.json');
+  await poisoned.save(SyncState(remoteRoot: liarRoot.replaceAll(RegExp(r'^/+'), ''), files: {
+    rel: SyncedFile(sha1: sha1Of(utf8.encode(localAgain)), etag: '假装上传成功后的新 ETag'),
+  }));
+  final engineC3 = SyncEngine(
+    repo: vaultC,
+    backend: liar,
+    stateStore: poisoned,
+    deviceName: '电脑C',
+    remoteRoot: liarRoot,
+  );
+  final rC5 = await engineC3.sync();
+  final localPoisoned = await vaultC.readFileOrNull(rel) ?? '';
+  print('  ⚠️ 演示：状态被污染时（旧版本的行为）→ ${rC5.summary}；'
+      '本地现在的内容：${localPoisoned.trim()}');
+
+  truth.close();
+  try {
+    await tmp2.delete(recursive: true);
+  } catch (_) {}
+
+  print('\n=== 4. 限流统计 ===');
   print('  本次总共发出 ${client.requestCount + client2.requestCount} 次请求（坚果云免费版限额：30 分钟 600 次）');
   client.close();
   client2.close();
@@ -144,4 +244,37 @@ Future<void> main(List<String> args) async {
 
   print('\n结果：$_pass 项通过，$_fail 项失败');
   exit(_fail == 0 ? 0 : 1);
+}
+
+/// 一个「说谎的」WebDAV 后端：除了 PUT 之外都原样转发给真服务器，
+/// **PUT 只回一个 ETag，根本不写**。
+///
+/// 这就是用户踩过的坑（服务端因为权限/配额/路径拒绝写入，却回了个成功），
+/// 用来验证「上传后回读校验」这道防线真的拦得住。
+class _LyingBackend implements WebdavBackend {
+  _LyingBackend(this.real);
+
+  final WebdavClient real;
+  int lies = 0;
+
+  @override
+  Future<void> ensureDir(String path) => real.ensureDir(path);
+
+  @override
+  Future<List<WebdavEntry>> list(String path) => real.list(path);
+
+  @override
+  Future<String?> getString(String path) => real.getString(path);
+
+  @override
+  Future<String?> put(String path, String content, {String? ifMatch, bool createOnly = false}) async {
+    lies++;
+    return '"说谎后端给的新 ETag"';
+  }
+
+  @override
+  Future<void> delete(String path) => real.delete(path);
+
+  @override
+  Future<bool> exists(String path) => real.exists(path);
 }

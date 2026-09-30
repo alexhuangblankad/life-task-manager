@@ -62,3 +62,6 @@ windows/flutter/ephemeral/
 # GitHub 授权流程的临时文件（.gh_device.txt 里是设备码，别进仓库）
 .gh_*.txt
 .gh_poll.json
+
+# 本机 WebDAV 验证用的临时服务器根目录（tool/webdav_check.dart 跑出来的）
+.davroot/
