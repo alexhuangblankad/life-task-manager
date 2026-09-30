@@ -5,6 +5,8 @@
 ///     <vault>/日程/202609.json            当月日程
 ///     <vault>/杂记/202609/日记/2026-09-28.md
 ///     <vault>/杂记/202609/任务/2026-09-28_草坪机器人毕设.md
+///     <vault>/杂记/202609/任务/2026-09-28_草坪机器人毕设-2.md   同一天同一任务的第二条
+///     <vault>/附件/202609/xxx.png         杂记里插的图
 ///     <vault>/月报/202609-月报.md
 ///     <vault>/回收站/<时间戳>/...         删掉的东西先扔这儿
 library;
@@ -17,6 +19,9 @@ class VaultLayout {
   /// 周报、月报、季报都放这个文件夹
   static const String reportDir = '报告';
   static const String trashDir = '回收站';
+
+  /// 杂记里插的图片（拖进来的图片复制到这里，杂记用相对路径引用）
+  static const String attachmentDir = '附件';
 
   static const String profilePath = '$configDir/profile.json';
 
@@ -32,8 +37,22 @@ class VaultLayout {
 
   static String diaryPath(DateTime d) => '${diaryDir(d)}/${isoDate(d)}.md';
 
-  static String taskNotePath(DateTime d, String slug) =>
-      '${taskNoteDir(d)}/${isoDate(d)}_${sanitize(slug)}.md';
+  /// 任务杂记路径：**一条杂记一个文件**。
+  ///
+  /// [seq] 是「同一天、同一个任务下的第几条」：1 → `2026-09-30_任务.md`，
+  /// 2 → `2026-09-30_任务-2.md`，依次往后。
+  ///
+  /// 以前只有「日期_任务名」这一段，同一天在同一个大任务下写第二条杂记
+  /// 就会落到同一个路径上，把前一条**直接覆盖掉**（用户报的「同大任务下
+  /// 的小任务杂记互相盖掉」就是这个）。现在由 repository 负责找空位。
+  static String taskNotePath(DateTime d, String slug, {int seq = 1}) {
+    final base = '${isoDate(d)}_${sanitize(slug)}';
+    return '${taskNoteDir(d)}/${seq <= 1 ? base : '$base-$seq'}.md';
+  }
+
+  /// 附件路径：附件/202609/图片名.png（按月分文件夹，和杂记的月份对齐）
+  static String attachmentPath(DateTime d, String fileName) =>
+      '$attachmentDir/${monthFolder(d)}/${sanitize(fileName, maxLength: 80)}';
 
   /// 报告文件路径：报告/2026-09-周报.md
   static String reportPath(String label, String suffix) => '$reportDir/$label-$suffix.md';
@@ -55,6 +74,7 @@ class VaultLayout {
         noteDir,
         eventDir,
         reportDir,
+        attachmentDir,
         trashDir,
       ];
 

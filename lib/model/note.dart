@@ -36,6 +36,7 @@ class Note {
     this.body = '',
     this.taskId,
     this.taskTitle,
+    this.subtaskId,
     this.subtaskTitle,
     this.mood,
     this.tags = const [],
@@ -54,6 +55,9 @@ class Note {
   final String? taskId;
   final String? taskTitle;
 
+  /// 任务杂记：关联的小任务 ID（老杂记没有这个字段，那时只记了标题）
+  final String? subtaskId;
+
   /// 任务杂记：如果是完成某个小任务时写的，记下它的标题
   final String? subtaskTitle;
 
@@ -67,14 +71,31 @@ class Note {
 
   bool get isEmpty => body.trim().isEmpty;
 
-  Note copyWith({String? body, int? mood, bool clearMood = false, List<String>? tags, String? filePath}) => Note(
+  /// 这条杂记是不是挂在小任务 [id]（标题叫 [title]）名下。
+  /// 有 ID 就按 ID 认（改过名的也能认出来）；老杂记没有 ID，退回按标题认。
+  bool belongsToSubtask(String id, String title) {
+    if (subtaskId != null) return subtaskId == id;
+    return subtaskTitle == title;
+  }
+
+  Note copyWith({
+    String? body,
+    int? mood,
+    bool clearMood = false,
+    List<String>? tags,
+    String? filePath,
+    String? subtaskId,
+    String? subtaskTitle,
+  }) =>
+      Note(
         id: id,
         type: type,
         date: date,
         body: body ?? this.body,
         taskId: taskId,
         taskTitle: taskTitle,
-        subtaskTitle: subtaskTitle,
+        subtaskId: subtaskId ?? this.subtaskId,
+        subtaskTitle: subtaskTitle ?? this.subtaskTitle,
         mood: clearMood ? null : (mood ?? this.mood),
         tags: tags ?? this.tags,
         filePath: filePath ?? this.filePath,
@@ -112,6 +133,7 @@ Note parseNote(String raw, {String filePath = ''}) {
     body: fm.body.trimRight(),
     taskId: _nullable(data['task']),
     taskTitle: _nullable(data['task_title']),
+    subtaskId: _nullable(data['subtask_id']),
     subtaskTitle: _nullable(data['subtask']),
     mood: mood,
     tags: _asStringList(data['tags']),
@@ -127,6 +149,7 @@ String renderNote(Note note) {
     ..writeln('date: ${formatDate(note.date)}');
   if (note.taskId != null) buf.writeln('task: ${note.taskId}');
   if (note.taskTitle != null) buf.writeln('task_title: ${_q(note.taskTitle!)}');
+  if (note.subtaskId != null) buf.writeln('subtask_id: ${note.subtaskId}');
   if (note.subtaskTitle != null) buf.writeln('subtask: ${_q(note.subtaskTitle!)}');
   if (note.mood != null) buf.writeln('mood: ${note.mood}');
   if (note.tags.isNotEmpty) buf.writeln('tags: [${note.tags.join(', ')}]');

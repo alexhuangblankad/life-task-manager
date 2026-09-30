@@ -667,6 +667,7 @@ Future<void> _showTaskNoteDialog(BuildContext context, AppState state, TaskFile 
     body: trimmed,
     taskTitle: tf.task.title,
     taskId: tf.task.id,
+    subtaskId: st?.id,
     subtaskTitle: st?.title,
   );
 }

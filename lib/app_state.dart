@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:local_notifier/local_notifier.dart';
 
 import 'core/countdown.dart';
+import 'core/current_vault.dart';
 import 'core/device_config.dart';
 import 'core/font_scale.dart';
 import 'core/front_matter.dart';
@@ -69,6 +70,7 @@ class AppState extends ChangeNotifier {
     try {
       device = await _store.load();
       repo = VaultRepository(device.vaultPath);
+      CurrentVault.root = device.vaultPath;
       await repo.ensureStructure();
       await _loadAll();
     } catch (e, st) {
@@ -666,6 +668,7 @@ class AppState extends ChangeNotifier {
     required String body,
     required String taskTitle,
     String? taskId,
+    String? subtaskId,
     String? subtaskTitle,
     int? mood,
   }) async {
@@ -676,6 +679,7 @@ class AppState extends ChangeNotifier {
       body: body,
       taskId: taskId,
       taskTitle: taskTitle,
+      subtaskId: subtaskId,
       subtaskTitle: subtaskTitle,
       mood: mood,
     );
@@ -698,9 +702,29 @@ class AppState extends ChangeNotifier {
   /// 某天的日记（跨月也能取）
   Future<Note?> diaryOf(DateTime day) => repo.loadDiary(day);
 
+  /// 拖进杂记里的图片：复制进 vault 的 附件/ 下，返回正文里要写的相对路径。
+  /// 失败返回 null（编辑器那边会跳过这一张，不影响其他图）。
+  Future<String?> attachImage(String fileName, List<int> bytes) async {
+    try {
+      return await repo.saveAttachment(DateTime.now(), fileName, bytes);
+    } catch (e) {
+      debugPrint('[附件] 存图失败：$e');
+      return null;
+    }
+  }
+
   /// 某个大任务相关的全部任务杂记
   List<Note> notesForTask(String taskId) =>
       notes.where((n) => n.taskId == taskId).toList();
+
+  /// 某个小任务名下的**全部**任务杂记（跨月份，现从盘上读）。
+  /// 杂记页点开一个小任务时用它。
+  Future<List<Note>> notesForSubtask(TaskFile tf, SubTask st) async {
+    final all = await repo.loadAllNotes();
+    return all
+        .where((n) => n.type == NoteType.task && n.taskId == tf.task.id && n.belongsToSubtask(st.id, st.title))
+        .toList();
+  }
 
   // ─────────────────────── 日程 ───────────────────────
 
@@ -812,6 +836,7 @@ class AppState extends ChangeNotifier {
   Future<void> changeVaultPath(String path) async {
     device.vaultPath = path;
     repo = VaultRepository(path);
+    CurrentVault.root = path;
     await repo.ensureStructure();
     await saveDeviceConfig();
     await _loadAll();

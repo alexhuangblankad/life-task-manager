@@ -89,6 +89,85 @@ void main() {
     expect(month.where((n) => n.type == NoteType.task).single.taskTitle, '草坪机器人毕设');
   });
 
+  test('杂记：一条杂记一个文件 —— 同一天同一大任务的第二条不覆盖第一条', () async {
+    final day = DateTime(2026, 9, 30);
+    final first = await repo.saveNote(Note(
+      id: 'n-1',
+      type: NoteType.task,
+      date: day,
+      body: '第一条：仿真参数调好了',
+      taskId: 't-1',
+      taskTitle: '草坪机器人毕设',
+      subtaskTitle: '跑通仿真',
+    ));
+    final second = await repo.saveNote(Note(
+      id: 'n-2',
+      type: NoteType.task,
+      date: day,
+      body: '第二条：换了另一个小任务',
+      taskId: 't-1',
+      taskTitle: '草坪机器人毕设',
+      subtaskTitle: '写开题报告',
+    ));
+
+    expect(first.filePath, '杂记/202609/任务/2026-09-30_草坪机器人毕设.md');
+    expect(second.filePath, '杂记/202609/任务/2026-09-30_草坪机器人毕设-2.md');
+    expect(second.filePath, isNot(first.filePath));
+
+    final month = await repo.loadNotes(day);
+    expect(month.where((n) => n.type == NoteType.task).length, 2);
+    expect(month.map((n) => n.body).join(), contains('第一条'));
+    expect(month.map((n) => n.body).join(), contains('第二条'));
+    // 第一条的文件内容一个字没被动过
+    expect(await repo.readFileOrNull(first.filePath), contains('第一条'));
+  });
+
+  test('杂记：老版本的文件（日期_任务名.md）不会被新杂记覆盖', () async {
+    // 模拟旧版本写下的文件：路径就是新方案里的 seq=1
+    const legacyRel = '杂记/202609/任务/2026-09-30_草坪机器人毕设.md';
+    await repo.writeFile(
+      legacyRel,
+      '---\nid: n-old\ntype: 任务\ndate: 2026-09-30\ntask_title: 草坪机器人毕设\n---\n\n老版本写的内容\n',
+    );
+
+    final fresh = await repo.saveNote(Note(
+      id: 'n-new',
+      type: NoteType.task,
+      date: DateTime(2026, 9, 30),
+      body: '升级之后写的新杂记',
+      taskId: 't-1',
+      taskTitle: '草坪机器人毕设',
+    ));
+
+    expect(fresh.filePath, '杂记/202609/任务/2026-09-30_草坪机器人毕设-2.md');
+    expect(await repo.readFileOrNull(legacyRel), contains('老版本写的内容'));
+    final month = await repo.loadNotes(DateTime(2026, 9, 30));
+    expect(month.length, 2, reason: '老的读得出来，新的也没丢');
+  });
+
+  test('杂记：编辑已有杂记是原地写回，不会另存一份', () async {
+    final saved = await repo.saveNote(Note(
+      id: 'n-1',
+      type: NoteType.task,
+      date: DateTime(2026, 9, 30),
+      body: '原内容',
+      taskTitle: '草坪机器人毕设',
+    ));
+    await repo.saveNote(saved.copyWith(body: '改过的内容'));
+    final month = await repo.loadNotes(DateTime(2026, 9, 30));
+    expect(month.length, 1);
+    expect(month.single.body, '改过的内容');
+  });
+
+  test('附件：图片存进 附件/月份/，重名自动加序号', () async {
+    final a = await repo.saveAttachment(DateTime(2026, 9, 30), '截图.png', [1, 2, 3]);
+    final b = await repo.saveAttachment(DateTime(2026, 9, 30), '截图.png', [4, 5, 6]);
+    expect(a, '附件/202609/截图.png');
+    expect(b, '附件/202609/截图-2.png');
+    expect(await File('${tmp.path}/$a').readAsBytes(), [1, 2, 3]);
+    expect(await File('${tmp.path}/$b').readAsBytes(), [4, 5, 6]);
+  });
+
   test('日程：按月存取 JSON', () async {
     await repo.saveEvents(DateTime(2026, 9, 1), [
       CalendarEvent(id: 'e-1', title: '组会', start: DateTime(2026, 9, 30, 14), end: DateTime(2026, 9, 30, 16)),

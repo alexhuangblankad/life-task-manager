@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  desktop_drop
   flutter_timezone
   local_notifier
   screen_retriever_windows

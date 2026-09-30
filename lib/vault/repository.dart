@@ -142,27 +142,81 @@ class VaultRepository {
     return parseNote(await f.readAsString(), filePath: _rel(f.path));
   }
 
-  /// 保存杂记（路径没给就按类型和日期生成）
+  /// 读 vault 里**所有月份**的杂记（按日期倒序）。
+  ///
+  /// 杂记页点开一个小任务时要看它名下的全部杂记 —— 那只读当月是不够的。
+  /// 个人 vault 就几百个文件，一次全读没问题；贵的只是调用它的频率，所以只在
+  /// 用户真的点开时调。
+  Future<List<Note>> loadAllNotes() async {
+    final root = Directory(abs(VaultLayout.noteDir));
+    if (!await root.exists()) return const [];
+    final files = <File>[];
+    await for (final e in root.list(recursive: true, followLinks: false)) {
+      if (e is File && e.path.toLowerCase().endsWith('.md')) files.add(e);
+    }
+    final out = <Note>[];
+    for (final f in files) {
+      try {
+        out.add(parseNote(await f.readAsString(), filePath: _rel(f.path)));
+      } catch (_) {
+        // 单个文件坏了不能拖垮整页
+      }
+    }
+    out.sort((a, b) => b.date.compareTo(a.date));
+    return out;
+  }
+
+  /// 保存杂记。
+  ///
+  /// **一条杂记一个 md 文件**：
+  /// - 传入的 [Note.filePath] 非空（编辑已有杂记）→ 原地写回，路径不动；
+  /// - 为空（新建）→ 生成路径；如果那个路径已经被**别的**杂记占了（同一天、
+  ///   同一个大任务下的第二条），就往后找 `-2`、`-3`…，绝不覆盖别人。
+  ///   老版本按「日期_任务名」合并成同一个文件，这里读得出来、也不动它。
   Future<Note> saveNote(Note note) async {
     var rel = note.filePath;
     if (rel.isEmpty) {
       rel = note.type == NoteType.diary
           ? VaultLayout.diaryPath(note.date)
-          : VaultLayout.taskNotePath(note.date, note.taskTitle ?? note.subtaskTitle ?? '任务杂记');
+          : await _freeTaskNotePath(note);
     }
     await writeFile(rel, renderNote(note));
-    return Note(
-      id: note.id,
-      type: note.type,
-      date: note.date,
-      body: note.body,
-      taskId: note.taskId,
-      taskTitle: note.taskTitle,
-      subtaskTitle: note.subtaskTitle,
-      mood: note.mood,
-      tags: note.tags,
-      filePath: rel,
-    );
+    return note.copyWith(filePath: rel);
+  }
+
+  /// 给一条**新**任务杂记找一个没被占用的文件路径。
+  ///
+  /// 路径已存在时读出来看 id：是同一条（重复保存）就复用，不是就试下一个序号。
+  Future<String> _freeTaskNotePath(Note note) async {
+    final slug = note.taskTitle ?? note.subtaskTitle ?? '任务杂记';
+    for (var seq = 1; seq <= 999; seq++) {
+      final rel = VaultLayout.taskNotePath(note.date, slug, seq: seq);
+      final existing = await readFileOrNull(rel);
+      if (existing == null) return rel;
+      if (parseNote(existing, filePath: rel).id == note.id) return rel;
+    }
+    return VaultLayout.taskNotePath(note.date, slug, seq: 999);
+  }
+
+  /// 存一张拖进杂记里的图：复制到 附件/<月份>/ 下，返回 vault 相对路径。
+  /// 重名就加序号 —— 附件也不能互相覆盖。
+  Future<String> saveAttachment(DateTime day, String fileName, List<int> bytes) async {
+    for (var seq = 1; seq <= 999; seq++) {
+      final rel = VaultLayout.attachmentPath(day, _withSeq(fileName, seq));
+      final f = File(abs(rel));
+      if (await f.exists()) continue;
+      await f.parent.create(recursive: true);
+      await f.writeAsBytes(bytes);
+      return rel;
+    }
+    throw StateError('附件目录里同名文件太多：$fileName');
+  }
+
+  static String _withSeq(String fileName, int seq) {
+    if (seq <= 1) return fileName;
+    final dot = fileName.lastIndexOf('.');
+    if (dot <= 0) return '$fileName-$seq';
+    return '${fileName.substring(0, dot)}-$seq${fileName.substring(dot)}';
   }
 
   // ─────────────────────────── 日程 ───────────────────────────

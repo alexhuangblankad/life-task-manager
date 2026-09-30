@@ -12,6 +12,7 @@ import 'package:life_task_manager/model/note.dart';
 import 'package:life_task_manager/model/profile.dart';
 import 'package:life_task_manager/model/task.dart';
 import 'package:life_task_manager/vault/repository.dart';
+import 'package:life_task_manager/ui/notes_page.dart';
 import 'package:life_task_manager/ui/tasks_page.dart';
 import 'package:life_task_manager/ui/tray.dart';
 
@@ -183,12 +184,33 @@ void main() {
     expect(qr, findsWidgets, reason: '收款码图片要显示出来');
   });
 
-  testWidgets('杂记页：两种杂记都在，能按月过滤', (tester) async {
+  testWidgets('杂记页：和待办同构（大任务分组 + 进度条 + 点小任务看它名下杂记）', (tester) async {
     await pumpApp(tester);
     await goTab(tester, '杂记');
-    expect(find.textContaining('任务杂记'), findsWidgets);
-    expect(find.textContaining('日记'), findsWidgets);
-    expect(find.textContaining('共 2 条'), findsOneWidget);
+    expect(find.textContaining('任务杂记 1 条'), findsOneWidget);
+    expect(find.textContaining('日记 1 条'), findsOneWidget);
+
+    final notesPage = find.byType(NotesPage);
+    // 大任务分组 + 进度条（和待办页读的是同一份任务数据）
+    expect(find.descendant(of: notesPage, matching: find.text('草坪机器人毕设')), findsWidgets);
+    expect(find.descendant(of: notesPage, matching: find.text('0/3')), findsOneWidget);
+    // 日记那一段还在，还是按日期分组
+    expect(find.textContaining('今天把大纲写完了'), findsWidgets);
+
+    // 点小任务 → 看它名下的杂记（这条老杂记只有 subtask 标题、没有 ID，也要认得出来）
+    final row = find.descendant(of: notesPage, matching: find.text('跑通仿真最小示例'));
+    expect(row, findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(row);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+    });
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+    expect(find.textContaining('共 1 条任务杂记'), findsOneWidget);
+    expect(find.textContaining('仿真参数调好了'), findsWidgets);
+    await tester.tap(find.text('关闭'));
+    await tester.pump();
   });
 
   testWidgets('第一次关窗口：先问一次「缩到托盘还是退出」，勾了记住就存下来', (tester) async {

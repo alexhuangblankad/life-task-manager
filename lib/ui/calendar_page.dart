@@ -303,6 +303,7 @@ class _CalendarPageState extends State<CalendarPage> {
       title: '${formatDateCn(day)} 的日记',
       initialText: existing == null ? '' : '\n',
       hint: '今天发生了什么？留一句也算。',
+      onInsertImage: (name, bytes) => s.attachImage(name, bytes),
     );
     if (text == null || text.trim().isEmpty) return;
     await s.saveDiary(day, text.trim());
@@ -665,7 +666,7 @@ class _DayPanel extends StatelessWidget {
                     const SizedBox(height: 8),
                     if (diary == null || diary.body.trim().isEmpty)
                       Text(
-                        '还没写。日记会存到 杂记/${dateMonthFolder(day)}/日记/${isoDate(day)}.md',
+                        '还没写。写完按天存档，以后翻日历就能看回来。',
                         style: Theme.of(context).textTheme.bodySmall,
                       )
                     else
