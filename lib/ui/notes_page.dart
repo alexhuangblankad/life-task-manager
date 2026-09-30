@@ -116,14 +116,20 @@ class _NoteTile extends StatelessWidget {
         size: 18,
         color: isDiary ? scheme.primary : Colors.orange,
       ),
-      title: Text(firstLine, maxLines: 1, overflow: TextOverflow.ellipsis),
+      // 标题用**小任务的名字**（没有就退回大任务名、再退回正文首行）。
+      // 用正文首行当标题很难认，用户明确要求改掉。
+      title: Text(
+        note.subtaskTitle ?? note.taskTitle ?? firstLine,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       subtitle: Text(
         [
           isDiary ? '日记' : '任务杂记',
-          if (note.taskTitle != null) note.taskTitle!,
-          if (note.subtaskTitle != null) '（${note.subtaskTitle}）',
+          // 标题已经用了小任务名，这里补上它属于哪个大任务当上下文
+          if (note.subtaskTitle != null && note.taskTitle != null) note.taskTitle!,
           if (note.mood != null) '心情 ${note.mood}/5',
-          note.filePath,
+          // 不再显示文件路径（用户要求删掉，看着烦）
         ].join(' · '),
         style: Theme.of(context).textTheme.bodySmall,
         maxLines: 1,

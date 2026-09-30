@@ -249,7 +249,19 @@ class SyncEngine {
       final content = await repo.readFileOrNull(path);
       if (content == null) return;
       var etag = await backend.put(path, content);
-      // 有些服务器 PUT 不返回 ETag，那就问一次，否则下次同步会误判成「远端又改了」
+
+      // 上传后**回读校验**：PUT 返回的 ETag 不可信 ——
+      // 服务端可能因为权限/配额/路径问题拒绝了写入，却照样回一个 ETag，
+      // 我们就会把状态记成「已同步」。下次同步于是认为本地干净、云端更新 →
+      // 把云端旧内容下载回来覆盖本地（用户踩过：本地新改的被旧备份盖掉，
+      // 现象就是「只能下载、无法上传」）。
+      // 校验失败就抛错：调用方不会更新同步状态，本地继续保持「脏」，
+      // 下次同步会重试上传，而且绝不会反向覆盖。
+      final back = await backend.getString(path);
+      if (back == null || sha1Of(utf8.encode(back)) != entry.sha1) {
+        throw StateError('上传后回读内容不一致（服务器没真的写入）：$path');
+      }
+
       etag ??= remoteEntry?.etag ?? await _fetchRemoteEtag(path);
       base[path] = SyncedFile(sha1: entry.sha1, etag: etag, syncedAt: _clock());
     }
